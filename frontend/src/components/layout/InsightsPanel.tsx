@@ -1,0 +1,111 @@
+// frontend/src/components/layout/InsightsPanel.tsx
+import { useNavigate } from 'react-router-dom';
+import { useInsights } from '@/hooks/useInsights';
+import { useEngagements } from '@/hooks/useEngagements';
+import { useAnalysis } from '@/hooks/useAnalysis';
+import { useTimeline } from '@/hooks/useTimeline';
+import { useClientStore } from '@/stores/clientStore';
+import { InsightsSummary } from '@/components/insights/InsightsSummary';
+import { StakeholderList } from '@/components/insights/StakeholderList';
+import { ActionItems } from '@/components/insights/ActionItems';
+import { VscArrowRight } from 'react-icons/vsc';
+
+export function InsightsPanel() {
+  const navigate = useNavigate();
+  const { activeClient } = useClientStore();
+  const { memory, isLoading } = useInsights();
+  const { engagements, risks } = useEngagements();
+  const { results: analyses } = useAnalysis();
+  const { events } = useTimeline();
+
+  const clientPath = activeClient ? `/clients/${encodeURIComponent(activeClient)}` : '';
+
+  if (isLoading) {
+    return (
+      <div className="flex flex-col h-full bg-bg-panel">
+        <div className="flex items-center px-3 h-10 border-b border-border-default shrink-0">
+          <span className="text-xs font-semibold text-text-secondary uppercase tracking-wider">Key Insights</span>
+        </div>
+        <div className="p-3 text-text-muted text-sm">Loading...</div>
+      </div>
+    );
+  }
+
+  if (!memory) {
+    return (
+      <div className="flex flex-col h-full bg-bg-panel">
+        <div className="flex items-center px-3 h-10 border-b border-border-default shrink-0">
+          <span className="text-xs font-semibold text-text-secondary uppercase tracking-wider">Key Insights</span>
+        </div>
+        <div className="p-3 text-text-muted text-sm">Select a client to view insights</div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="flex flex-col h-full bg-bg-panel">
+      <div className="flex items-center px-3 h-10 border-b border-border-default shrink-0">
+        <span className="text-xs font-semibold text-text-secondary uppercase tracking-wider">Key Insights</span>
+      </div>
+      <div className="flex-1 overflow-y-auto p-3 space-y-3">
+        <InsightsSummary memory={memory} />
+        <StakeholderList stakeholders={memory.key_stakeholders} />
+        <ActionItems items={memory.open_action_items} clientName={memory.client_name} />
+
+        {/* Engagements summary card */}
+        <NavCard
+          title="Engagements"
+          count={engagements.length}
+          subtitle={engagements.filter((e) => e.status === 'active').length + ' active'}
+          onClick={() => navigate(`${clientPath}/engagements`)}
+        />
+
+        {/* Risks summary card */}
+        <NavCard
+          title="Risk Register"
+          count={risks.length}
+          subtitle={risks.filter((r) => r.status === 'open').length + ' open'}
+          onClick={() => navigate(`${clientPath}/risks`)}
+          color={risks.some((r) => r.probability * r.impact >= 15) ? 'red' : undefined}
+        />
+
+        {/* Timeline summary card */}
+        <NavCard
+          title="Timeline"
+          count={events.length}
+          subtitle={events.length > 0 ? `Latest: ${events[0]?.date?.split('T')[0] || ''}` : 'No events'}
+          onClick={() => navigate(`${clientPath}/timeline`)}
+        />
+
+        {/* Analysis summary card */}
+        <NavCard
+          title="Document Analysis"
+          count={analyses.length}
+          subtitle={analyses.length > 0 ? `Last: ${analyses[0]?.doc_type || 'unknown'}` : 'No analyses'}
+          onClick={() => navigate(`${clientPath}/analysis`)}
+        />
+      </div>
+    </div>
+  );
+}
+
+function NavCard({ title, count, subtitle, onClick, color }: {
+  title: string; count: number; subtitle: string; onClick: () => void; color?: string;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className="w-full p-3 bg-bg-secondary rounded-md border border-border-default hover:border-accent/30 transition-colors text-left group"
+    >
+      <div className="flex items-center justify-between">
+        <span className="text-xs font-semibold text-text-secondary uppercase tracking-wider">{title}</span>
+        <VscArrowRight size={14} className="text-text-muted group-hover:text-accent transition-colors" />
+      </div>
+      <div className="flex items-baseline gap-2 mt-1">
+        <span className={`text-lg font-bold ${color === 'red' ? 'text-red-400' : 'text-text-primary'}`}>{count}</span>
+        <span className="text-[10px] text-text-muted">{subtitle}</span>
+      </div>
+    </button>
+  );
+}

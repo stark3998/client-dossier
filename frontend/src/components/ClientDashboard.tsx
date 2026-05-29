@@ -1,0 +1,140 @@
+// frontend/src/components/ClientDashboard.tsx
+import { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
+import { VscAdd, VscFolder, VscArrowRight } from 'react-icons/vsc';
+
+export function ClientDashboard() {
+  const navigate = useNavigate();
+  const [clients, setClients] = useState<string[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [showNewClient, setShowNewClient] = useState(false);
+  const [newClientName, setNewClientName] = useState('');
+  const [creating, setCreating] = useState(false);
+
+  useEffect(() => {
+    fetchClients();
+  }, []);
+
+  const fetchClients = async () => {
+    setLoading(true);
+    try {
+      const res = await fetch('/api/clients');
+      if (res.ok) {
+        const data = await res.json();
+        setClients(data.clients || []);
+      }
+    } catch (err) {
+      console.error('Failed to fetch clients:', err);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const onboardClient = async () => {
+    if (!newClientName.trim() || creating) return;
+    setCreating(true);
+    try {
+      const res = await fetch('/api/clients', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ client_name: newClientName.trim() }),
+      });
+      if (res.ok) {
+        navigate(`/clients/${encodeURIComponent(newClientName.trim())}`);
+      }
+    } catch (err) {
+      console.error('Failed to onboard client:', err);
+    } finally {
+      setCreating(false);
+    }
+  };
+
+  return (
+    <div className="min-h-screen bg-bg-primary">
+      <header className="border-b border-border-default bg-bg-secondary">
+        <div className="max-w-5xl mx-auto px-6 py-4">
+          <h1 className="text-lg font-bold text-accent tracking-wide">CLIENT INTELLIGENCE AGENT</h1>
+          <p className="text-sm text-text-secondary mt-1">Select a client to explore documents and insights</p>
+        </div>
+      </header>
+
+      <main className="max-w-5xl mx-auto px-6 py-8">
+        <div className="flex items-center justify-between mb-6">
+          <h2 className="text-sm font-semibold text-text-secondary uppercase tracking-wider">Your Clients</h2>
+          <button
+            type="button"
+            onClick={() => setShowNewClient(true)}
+            className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium bg-accent text-bg-primary rounded hover:bg-accent-bright transition-colors"
+            aria-label="Add a new client"
+          >
+            <VscAdd size={14} />
+            Add Client
+          </button>
+        </div>
+
+        {showNewClient && (
+          <div className="mb-6 p-4 bg-bg-panel border border-border-default rounded-md">
+            <div className="flex items-center gap-3">
+              <input
+                type="text"
+                value={newClientName}
+                onChange={(e) => setNewClientName(e.target.value)}
+                onKeyDown={(e) => { if (e.key === 'Enter') onboardClient(); }}
+                placeholder="Client name (e.g., Contoso)"
+                autoFocus
+                className="flex-1 px-3 py-2 text-sm bg-bg-secondary border border-border-default rounded text-text-primary placeholder:text-text-muted focus:outline-none focus:border-accent focus:ring-2 focus:ring-accent/30"
+              />
+              <button
+                type="button"
+                onClick={onboardClient}
+                disabled={!newClientName.trim() || creating}
+                className="px-4 py-2 text-xs font-medium bg-accent text-bg-primary rounded hover:bg-accent-bright transition-colors disabled:opacity-50"
+              >
+                {creating ? 'Creating...' : 'Create'}
+              </button>
+              <button
+                type="button"
+                onClick={() => { setShowNewClient(false); setNewClientName(''); }}
+                className="px-3 py-2 text-xs text-text-muted hover:text-text-primary transition-colors"
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        )}
+
+        {loading ? (
+          <div className="text-text-muted text-sm">Loading clients...</div>
+        ) : clients.length === 0 ? (
+          <div className="text-center py-16">
+            <VscFolder size={48} className="mx-auto text-text-muted mb-4" />
+            <p className="text-text-secondary mb-2">No clients yet</p>
+            <p className="text-xs text-text-muted mb-4">Add client folders to your OneDrive sync path, or create a new client above.</p>
+          </div>
+        ) : (
+          <div className="grid gap-3">
+            {clients.map((client) => (
+              <button
+                key={client}
+                type="button"
+                onClick={() => navigate(`/clients/${encodeURIComponent(client)}`)}
+                className="flex items-center justify-between p-4 bg-bg-panel border border-border-default rounded-md hover:border-accent/50 hover:bg-bg-hover transition-all group text-left"
+              >
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-md bg-accent/10 flex items-center justify-center text-accent font-bold text-sm">
+                    {client.slice(0, 2).toUpperCase()}
+                  </div>
+                  <div>
+                    <div className="text-sm font-medium text-text-primary">{client}</div>
+                    <div className="text-xs text-text-muted">Click to open workspace</div>
+                  </div>
+                </div>
+                <VscArrowRight size={16} className="text-text-muted group-hover:text-accent transition-colors" />
+              </button>
+            ))}
+          </div>
+        )}
+      </main>
+    </div>
+  );
+}

@@ -1,0 +1,24 @@
+// frontend/src/App.tsx
+import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
+import { ClientDashboard } from '@/components/ClientDashboard';
+import { ClientWorkspace } from '@/components/ClientWorkspace';
+import { ProjectTracker } from '@/components/insights/ProjectTracker';
+import { RiskRegister } from '@/components/insights/RiskRegister';
+import { InteractionTimeline } from '@/components/insights/InteractionTimeline';
+import { AnalysisResults } from '@/components/insights/AnalysisResults';
+
+export default function App() {
+  return (
+    <BrowserRouter>
+      <Routes>
+        <Route path="/" element={<ClientDashboard />} />
+        <Route path="/clients/:clientName" element={<ClientWorkspace />} />
+        <Route path="/clients/:clientName/engagements" element={<ProjectTracker />} />
+        <Route path="/clients/:clientName/risks" element={<RiskRegister />} />
+        <Route path="/clients/:clientName/timeline" element={<InteractionTimeline />} />
+        <Route path="/clients/:clientName/analysis" element={<AnalysisResults />} />
+        <Route path="*" element={<Navigate to="/" replace />} />
+      </Routes>
+    </BrowserRouter>
+  );
+}

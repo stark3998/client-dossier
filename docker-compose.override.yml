@@ -1,0 +1,27 @@
+services:
+  backend:
+    build:
+      target: builder
+    command: >
+      uvicorn app.main:app
+      --host 0.0.0.0
+      --port 8000
+      --reload
+    volumes:
+      - ./backend/app:/app/app
+      - ${ONEDRIVE_SYNC_PATH:-./data}:/mnt/onedrive:ro
+    environment:
+      - LOCAL_MODE=true
+      - DISABLE_TELEMETRY=true
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile.dev
+    ports:
+      - "5173:5173"
+    volumes:
+      - ./frontend/src:/app/src
+    environment:
+      - VITE_BACKEND_URL=http://localhost:8000
+      - VITE_LOCAL_MODE=true

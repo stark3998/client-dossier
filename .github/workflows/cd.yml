@@ -1,0 +1,128 @@
+name: CD
+
+on:
+  push:
+    branches: [main]
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  ACR_REGISTRY: ${{ secrets.ACR_REGISTRY }}
+  IMAGE_TAG: ${{ github.sha }}
+
+jobs:
+  build-and-push:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Azure Login (OIDC)
+        uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Log in to ACR
+        run: az acr login --name ${{ secrets.ACR_NAME }}
+
+      # Images tagged with git SHA only -- never :latest
+      - name: Build and push backend
+        run: |
+          docker build \
+            --target runtime \
+            -t $ACR_REGISTRY/client-agent-backend:$IMAGE_TAG \
+            ./backend
+          docker push $ACR_REGISTRY/client-agent-backend:$IMAGE_TAG
+
+      - name: Build and push frontend
+        run: |
+          docker build \
+            --target runtime \
+            -t $ACR_REGISTRY/client-agent-frontend:$IMAGE_TAG \
+            ./frontend
+          docker push $ACR_REGISTRY/client-agent-frontend:$IMAGE_TAG
+
+  terraform-apply:
+    runs-on: ubuntu-latest
+    needs: build-and-push
+    permissions:
+      contents: read
+      id-token: write
+    environment: production
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Azure Login (OIDC)
+        uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: "1.8.0"
+
+      - name: Terraform Init
+        working-directory: infra
+        run: terraform init
+        env:
+          # OIDC -- no ARM_CLIENT_SECRET
+          ARM_USE_OIDC: true
+          ARM_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
+          ARM_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+          ARM_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
+
+      - name: Terraform Validate
+        working-directory: infra
+        run: terraform validate
+
+      - name: Terraform Plan
+        working-directory: infra
+        run: |
+          terraform plan -out=tfplan \
+            -var="image_tag=${{ env.IMAGE_TAG }}" \
+            -var="environment=prod" \
+            -var="azure_openai_endpoint=${{ secrets.AZURE_OPENAI_ENDPOINT }}" \
+            -var="azure_openai_api_key=${{ secrets.AZURE_OPENAI_API_KEY }}" \
+            -var="azure_openai_deployment=${{ secrets.AZURE_OPENAI_DEPLOYMENT }}" \
+            -var="azure_openai_embedding_deployment=${{ secrets.AZURE_OPENAI_EMBEDDING_DEPLOYMENT }}" \
+            -var="entra_tenant_id=${{ secrets.ENTRA_TENANT_ID }}" \
+            -var="entra_client_id=${{ secrets.ENTRA_CLIENT_ID }}" \
+            -var="entra_client_secret=${{ secrets.ENTRA_CLIENT_SECRET }}" \
+            -var="name_suffix=${{ secrets.NAME_SUFFIX }}"
+        env:
+          ARM_USE_OIDC: true
+          ARM_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
+          ARM_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+          ARM_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
+
+      # TODO: Migrate secrets (azure_openai_api_key, entra_client_secret) to
+      # Key Vault references so they are not passed as Terraform vars.
+      - name: Terraform Apply
+        working-directory: infra
+        run: terraform apply -auto-approve tfplan
+        env:
+          ARM_USE_OIDC: true
+          ARM_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
+          ARM_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+          ARM_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
+
+  smoke-test:
+    runs-on: ubuntu-latest
+    needs: terraform-apply
+    steps:
+      - name: Health check backend
+        run: |
+          curl -f https://${{ secrets.BACKEND_FQDN }}/health
+          curl -f https://${{ secrets.BACKEND_FQDN }}/ready
+      - name: Health check frontend
+        run: curl -f https://${{ secrets.FRONTEND_FQDN }}/health
