@@ -10,34 +10,12 @@ from app.models.analysis import (
     ExtractedRisk, ExtractedDate,
 )
 from app.models.source import ParsedDocument
+from app.prompts.loader import load_prompt
 from app.telemetry import track_event
 
 logger = logging.getLogger(__name__)
 
-ANALYSIS_PROMPT = """You are a consulting intelligence analyst. Analyze the following document and extract structured information.
-
-Respond ONLY with valid JSON matching this schema:
-{
-  "doc_type": "meeting_notes|contract|proposal|status_report|email|presentation|spreadsheet|memo|other",
-  "analysis_summary": "2-3 sentence summary of the document",
-  "extracted_stakeholders": [{"name": "...", "title": "...", "email": "...", "organization": "...", "confidence": 0.0-1.0}],
-  "extracted_actions": [{"description": "...", "owner": "...", "due_date": "YYYY-MM-DD or null", "priority": "high|medium|low", "source_section": "..."}],
-  "extracted_dates": [{"date": "YYYY-MM-DD", "description": "...", "date_type": "deadline|meeting|milestone|other"}],
-  "extracted_risks": [{"description": "...", "severity": "high|medium|low", "category": "technical|commercial|operational|timeline", "source_section": "..."}],
-  "engagement_references": ["project or engagement names mentioned"],
-  "key_topics": ["main themes or topics discussed"]
-}
-
-Rules:
-- Extract stakeholder names from signatures, headers, attendee lists, CC lines, org charts
-- Identify action items from bullet points, "TODO", "Action:", "Next steps" patterns
-- Detect risks from "risk", "concern", "issue", "blocker" language
-- Classify the document type based on structure and content
-- Set confidence scores for stakeholders (1.0 = explicitly named with title, 0.5 = mentioned by name only)
-- If a field has no data, use an empty list
-
-DOCUMENT TEXT:
-"""
+ANALYSIS_PROMPT = load_prompt("analysis_prompt.txt")
 
 
 class AnalysisService:

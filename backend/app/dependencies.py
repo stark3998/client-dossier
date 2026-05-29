@@ -12,10 +12,12 @@ _planner = None
 _watcher = None
 _tool_manager = None
 _mcp_manager = None
+_event_bus = None
+_alert_checker = None
 
 
 async def startup_services():
-    global _cosmos_manager, _search_service, _embedding_service, _planner, _watcher, _tool_manager, _mcp_manager
+    global _cosmos_manager, _search_service, _embedding_service, _planner, _watcher, _tool_manager, _mcp_manager, _event_bus, _alert_checker
 
     settings = get_settings()
     logger.info("Initializing services (LOCAL_MODE=%s)", settings.LOCAL_MODE)
@@ -24,6 +26,10 @@ async def startup_services():
     from app.services.cosmos import create_client_manager
     _cosmos_manager = create_client_manager()
     await _cosmos_manager.initialize()
+
+    # Event bus
+    from app.services.event_bus import EventBus
+    _event_bus = EventBus(_cosmos_manager)
 
     # Search service
     from app.services.search import create_search_service
@@ -44,15 +50,20 @@ async def startup_services():
     from app.agent.file_plugin import FilePlugin
     from app.agent.docgen_plugin import DocumentGenerationPlugin
 
+    from app.agent.engagement_plugin import EngagementPlugin
+    from app.agent.reporting_plugin import ReportingPlugin
+
     plugins = {
         "Search": SearchPlugin(_search_service, _embedding_service),
         "Memory": MemoryPlugin(_cosmos_manager),
         "Files": FilePlugin(),
         "DocumentGeneration": DocumentGenerationPlugin(),
+        "Engagements": EngagementPlugin(_cosmos_manager, _event_bus),
+        "Reporting": ReportingPlugin(_cosmos_manager),
     }
 
     from app.agent.planner import AgentPlanner
-    _planner = AgentPlanner(kernel, plugins)
+    _planner = AgentPlanner(kernel, plugins, cosmos_manager=_cosmos_manager)
 
     # MCP Manager (dynamic server management)
     from app.services.mcp_manager import MCPManager
@@ -63,6 +74,15 @@ async def startup_services():
     from app.services.tool_manager import ToolManager
     _tool_manager = ToolManager(kernel, _cosmos_manager)
     await _tool_manager.load_saved_tools()
+
+    # Alert checker (proactive background monitoring)
+    from app.agent.alert_checker import AlertChecker
+    _alert_checker = AlertChecker(_cosmos_manager, _event_bus)
+    await _alert_checker.start(interval_seconds=900)
+
+    # Subscribe notification manager to event bus for WebSocket push
+    from app.api.notifications import notification_manager
+    _event_bus.subscribe(notification_manager.broadcast)
 
     # File watcher (optional)
     import os
@@ -75,7 +95,9 @@ async def startup_services():
 
 
 async def shutdown_services():
-    global _watcher
+    global _watcher, _alert_checker
+    if _alert_checker:
+        await _alert_checker.stop()
     if _watcher:
         _watcher.stop()
     if _search_service:
@@ -136,3 +158,21 @@ def get_tool_manager():
 
 def get_mcp_manager():
     return _mcp_manager
+
+
+def get_event_bus():
+    return _event_bus
+
+
+async def get_client_action_items_repo(client_name: str):
+    if _cosmos_manager is None:
+        return None
+    client_id = client_name.lower().replace(" ", "-")
+    return await _cosmos_manager.get_client_repo(client_id, "action_items")
+
+
+async def get_client_events_repo(client_name: str):
+    if _cosmos_manager is None:
+        return None
+    client_id = client_name.lower().replace(" ", "-")
+    return await _cosmos_manager.get_client_repo(client_id, "events")

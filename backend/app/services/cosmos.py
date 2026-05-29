@@ -125,6 +125,12 @@ class CosmosClientManager:
         await db.create_container_if_not_exists(
             id="interactions", partition_key=PartitionKey(path="/id")
         )
+        await db.create_container_if_not_exists(
+            id="events", partition_key=PartitionKey(path="/event_type")
+        )
+        await db.create_container_if_not_exists(
+            id="action_items", partition_key=PartitionKey(path="/engagement_id")
+        )
         self._client_dbs[db_name] = db
         logger.info("Client database ensured: %s", db_name)
 
@@ -219,6 +225,8 @@ class LocalCosmosClientManager:
             deliverables = LocalCosmosRepository(f"client_{client_id}_deliverables")
             risks = LocalCosmosRepository(f"client_{client_id}_risks")
             interactions = LocalCosmosRepository(f"client_{client_id}_interactions")
+            events = LocalCosmosRepository(f"client_{client_id}_events")
+            action_items = LocalCosmosRepository(f"client_{client_id}_action_items")
             await memories.initialize()
             await doc_index.initialize()
             await analyses.initialize()
@@ -227,6 +235,8 @@ class LocalCosmosClientManager:
             await deliverables.initialize()
             await risks.initialize()
             await interactions.initialize()
+            await events.initialize()
+            await action_items.initialize()
             self._client_repos[client_id] = {
                 "memories": memories,
                 "doc_index": doc_index,
@@ -236,6 +246,8 @@ class LocalCosmosClientManager:
                 "deliverables": deliverables,
                 "risks": risks,
                 "interactions": interactions,
+                "events": events,
+                "action_items": action_items,
             }
 
     async def get_client_repo(self, client_id: str, container_name: str) -> LocalCosmosRepository:

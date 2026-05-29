@@ -10,7 +10,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.config import get_settings
-from app.api import health, ingest, files, chat, insights, memory, clients, analysis, engagements, timeline, tools, mcp
+from app.api import health, ingest, files, chat, insights, memory, clients, analysis, engagements, timeline, tools, mcp, action_items, client_health, notifications, briefing
 from app.api.auth import AuthMiddleware
 
 logger = logging.getLogger(__name__)
@@ -76,6 +76,10 @@ app.include_router(engagements.router)
 app.include_router(timeline.router)
 app.include_router(tools.router)
 app.include_router(mcp.router)
+app.include_router(action_items.router)
+app.include_router(client_health.router)
+app.include_router(notifications.router)
+app.include_router(briefing.router)
 
 # Configure logging
 logging.basicConfig(

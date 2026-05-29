@@ -43,6 +43,11 @@ class Settings(BaseSettings):
     MCP_MS_GRAPH_ENABLED: bool = False
     MCP_MS_GRAPH_ENDPOINT: str = ""
 
+    # Alerts
+    ALERT_CHECK_INTERVAL: int = 900
+    ALERT_RISK_THRESHOLD: int = 15
+    ALERT_STALE_DAYS: int = 14
+
     # App
     FRONTEND_URL: str = "http://localhost:5173"
     BACKEND_PORT: int = 8000

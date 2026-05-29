@@ -27,7 +27,7 @@ async def create_kernel():
     return kernel
 
 
-def get_execution_settings():
+def get_execution_settings(auto_invoke: bool = True):
     from semantic_kernel.connectors.ai.open_ai import AzureChatPromptExecutionSettings
     from semantic_kernel.connectors.ai.function_choice_behavior import FunctionChoiceBehavior
 
@@ -35,5 +35,5 @@ def get_execution_settings():
         service_id="chat",
         max_tokens=4096,
         temperature=0.3,
-        function_choice_behavior=FunctionChoiceBehavior.Auto(),
+        function_choice_behavior=FunctionChoiceBehavior.Auto(auto_invoke=auto_invoke),
     )

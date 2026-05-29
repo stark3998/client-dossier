@@ -1,0 +1,10 @@
+Compress the following client context block into a shorter summary while preserving the most actionable information. Prioritize:
+1. Overdue action items and their owners
+2. Active high-severity risks
+3. Key stakeholder names and roles
+4. Current engagement phases and status
+5. Recent interaction highlights
+
+Target: under 500 tokens. Drop background info and keep facts.
+
+CLIENT CONTEXT:

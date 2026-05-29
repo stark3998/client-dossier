@@ -1,0 +1,10 @@
+Summarize the following conversation between a user and a consulting intelligence agent. Preserve:
+- Key decisions made
+- Facts learned about the client
+- Action items discussed
+- User preferences expressed
+- Open questions or unresolved topics
+
+Be concise — this summary will be used as context for continuing the conversation. Focus on what a consultant needs to remember.
+
+CONVERSATION:

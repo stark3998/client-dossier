@@ -9,6 +9,7 @@ export function useChat() {
     messages, isStreaming, streamBuffer,
     addMessage, appendToken, addStreamSource,
     startStream, finalizeStream, activeClient,
+    addReasoningStep,
   } = useClientStore();
 
   const connect = useCallback(() => {
@@ -33,6 +34,16 @@ export function useChat() {
       } else if (msg.type === 'error') {
         finalizeStream();
         console.error('Chat error:', msg.message);
+      } else if (msg.type === 'thought' || msg.type === 'plan' || msg.type === 'plan_step' || msg.type === 'tool_call' || msg.type === 'tool_result') {
+        addReasoningStep({
+          type: msg.type,
+          content: msg.content || '',
+          tool_name: msg.tool_name,
+          tool_args: msg.tool_args,
+          step_number: msg.step_number,
+          step_total: msg.step_total,
+          plan_steps: msg.plan_steps,
+        });
       }
     };
 
@@ -43,7 +54,7 @@ export function useChat() {
     ws.onerror = () => {
       ws.close();
     };
-  }, [appendToken, addStreamSource, finalizeStream]);
+  }, [appendToken, addStreamSource, finalizeStream, addReasoningStep]);
 
   useEffect(() => {
     connect();

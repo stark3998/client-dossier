@@ -5,54 +5,26 @@ from typing import AsyncGenerator
 
 from app.config import get_settings
 from app.models.message import StreamEvent, SourceChip
+from app.prompts.loader import load_prompt
 from app.telemetry import track_event
 
 logger = logging.getLogger(__name__)
 
-SYSTEM_PROMPT = """You are a Client Intelligence Agent — a senior consulting advisor that maintains comprehensive intelligence about clients. You help consulting professionals prepare for meetings, track engagements, manage deliverables, assess risks, and generate documents.
-
-Available tools:
-
-DOCUMENT SEARCH & FILES:
-- search_documents: Search indexed client documents using natural language
-- list_files: Browse available client documents
-- read_file_preview: Preview document contents
-
-CLIENT MEMORY:
-- recall_client_memory: Retrieve stored client information (stakeholders, engagements, pain points, etc.)
-- update_client_memory: Store new client facts learned during conversations
-
-ENGAGEMENT MANAGEMENT:
-- recall_engagements: List all projects/engagements with phase, status, team
-- create_engagement: Create a new engagement/project
-- recall_risks: List risks, optionally filtered by engagement
-- recall_recent_interactions: View recent meetings, calls, emails
-- log_interaction: Record a new client interaction
-
-DOCUMENT GENERATION:
-- generate_presentation: Create PowerPoint presentations
-- generate_document: Create Word documents
-
-EXTERNAL SOURCES (if configured):
-- search_ms_learn: Search Microsoft Learn for technical guidance
-- search_ms_graph: Search Microsoft Graph for emails/calendar
-
-Guidelines:
-- Always cite sources with file paths and page/section references when using document search
-- Proactively update client memory when you learn new facts
-- When preparing for meetings, pull from engagements, recent interactions, and open action items
-- Track engagement phases (discovery -> design -> execute -> deliver -> sustain)
-- Flag risks when you identify concerns in documents or conversations
-- Log interactions when the user describes meetings or calls
-- Be concise but thorough — a senior consultant's brief, not a research paper
-"""
+SYSTEM_PROMPT = load_prompt("system_prompt.txt")
 
 
 class AgentPlanner:
-    def __init__(self, kernel, plugins: dict):
+    def __init__(self, kernel, plugins: dict, cosmos_manager=None):
         self._kernel = kernel
+        self._cosmos_manager = cosmos_manager
         for name, plugin in plugins.items():
             kernel.add_plugin(plugin, plugin_name=name)
+
+        from app.agent.context_injector import ContextInjector
+        from app.agent.conversation_manager import ConversationManager
+        self._context_injector = ContextInjector(cosmos_manager)
+        self._conversation_manager = ConversationManager(kernel)
+
         logger.info("Agent planner initialized with plugins: %s", list(plugins.keys()))
 
     async def stream_response(
@@ -75,40 +47,40 @@ class AgentPlanner:
         })
 
         try:
-            from app.agent.kernel import get_execution_settings
-            from semantic_kernel.connectors.ai.chat_completion_client_base import ChatCompletionClientBase
+            # Conversation management: summarize if history is too long
+            await self._conversation_manager.maybe_summarize(chat_history)
 
-            execution_settings = get_execution_settings()
-            chat_service = self._kernel.get_service(type=ChatCompletionClientBase)
+            # Auto-context injection
+            if client_name:
+                context_block = await self._context_injector.build_context_block(client_name)
+                if context_block:
+                    chat_history.add_system_message(context_block)
+
+            from app.agent.kernel import get_execution_settings
+            from app.agent.react_loop import run_react_loop
+            from app.agent.planner_executor import is_complex_query, plan_and_execute
+
+            execution_settings = get_execution_settings(auto_invoke=False)
 
             source_count = 0
             token_count = 0
-            full_content = []
 
-            response = chat_service.get_streaming_chat_message_content(
-                chat_history=chat_history,
-                settings=execution_settings,
-                kernel=self._kernel,
-            )
+            # Route to plan-and-execute for complex queries, otherwise ReAct
+            if is_complex_query(user_message):
+                generator = plan_and_execute(
+                    self._kernel, chat_history, execution_settings, user_message
+                )
+            else:
+                generator = run_react_loop(
+                    self._kernel, chat_history, execution_settings
+                )
 
-            async for chunk in response:
-                text = str(chunk)
-                if text:
-                    full_content.append(text)
+            async for event in generator:
+                if event.type == "token":
                     token_count += 1
-                    yield StreamEvent(type="token", content=text)
-
-                # Check for function results that contain source info
-                if hasattr(chunk, "items"):
-                    for item in chunk.items:
-                        if hasattr(item, "result") and item.result:
-                            sources = _extract_sources(item.result)
-                            for source in sources:
-                                source_count += 1
-                                yield StreamEvent(type="source", source=source)
-
-            full_response = "".join(full_content)
-            chat_history.add_assistant_message(full_response)
+                elif event.type == "source":
+                    source_count += 1
+                yield event
 
             duration_ms = int((time.time() - start) * 1000)
             track_event("agent.chat.response", {
@@ -118,28 +90,6 @@ class AgentPlanner:
                 "duration_ms": duration_ms,
             })
 
-            yield StreamEvent(type="done")
-
         except Exception as e:
             logger.error("Agent error: %s", e)
             yield StreamEvent(type="error", message=str(e))
-
-
-def _extract_sources(result: str) -> list[SourceChip]:
-    try:
-        data = json.loads(result)
-        if isinstance(data, list):
-            sources = []
-            for item in data:
-                if "file_path" in item:
-                    sources.append(SourceChip(
-                        file_path=item["file_path"],
-                        section_title=item.get("section_title"),
-                        page_number=item.get("page_number"),
-                        excerpt=item.get("content", "")[:200],
-                        score=item.get("score", 0),
-                    ))
-            return sources
-    except (json.JSONDecodeError, TypeError):
-        pass
-    return []

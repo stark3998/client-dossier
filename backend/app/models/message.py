@@ -29,7 +29,15 @@ class ChatRequest(BaseModel):
 
 
 class StreamEvent(BaseModel):
-    type: Literal["token", "source", "done", "error"]
+    type: Literal[
+        "token", "source", "done", "error",
+        "thought", "plan", "plan_step", "tool_call", "tool_result",
+    ]
     content: Optional[str] = None
     source: Optional[SourceChip] = None
     message: Optional[str] = None
+    tool_name: Optional[str] = None
+    tool_args: Optional[dict] = None
+    step_number: Optional[int] = None
+    step_total: Optional[int] = None
+    plan_steps: Optional[list[str]] = None

@@ -15,6 +15,16 @@ export interface SourceChip {
   score: number;
 }
 
+export interface AgentReasoningStep {
+  type: 'thought' | 'plan' | 'tool_call' | 'tool_result' | 'plan_step';
+  content: string;
+  tool_name?: string;
+  tool_args?: Record<string, unknown>;
+  step_number?: number;
+  step_total?: number;
+  plan_steps?: string[];
+}
+
 export interface ChatMessage {
   id: string;
   role: 'user' | 'assistant' | 'system';
@@ -22,6 +32,7 @@ export interface ChatMessage {
   sources: SourceChip[];
   timestamp: string;
   isStreaming?: boolean;
+  reasoning?: AgentReasoningStep[];
 }
 
 export interface Stakeholder {
@@ -72,10 +83,15 @@ export interface IngestStatus {
 }
 
 export interface WSMessage {
-  type: 'token' | 'source' | 'done' | 'error';
+  type: 'token' | 'source' | 'done' | 'error' | 'thought' | 'plan' | 'plan_step' | 'tool_call' | 'tool_result';
   content?: string;
   source?: SourceChip;
   message?: string;
+  tool_name?: string;
+  tool_args?: Record<string, unknown>;
+  step_number?: number;
+  step_total?: number;
+  plan_steps?: string[];
 }
 
 // ── Engagements & Project Tracking ──────────────────────────────
@@ -237,4 +253,91 @@ export interface TimelineEvent {
   participants?: string[];
   author?: string;
   file_path?: string;
+}
+
+// ── Notifications ──────────────────────────────────────────────
+
+export interface Notification {
+  id: string;
+  type: 'analysis_complete' | 'overdue_alert' | 'risk_escalation' | 'memory_updated' | 'engagement_phase_change';
+  title: string;
+  description: string;
+  timestamp: string;
+  read: boolean;
+  client_name?: string;
+  target_route?: string;
+  priority: 'low' | 'medium' | 'high';
+}
+
+export interface ClientEvent {
+  id: string;
+  client_name: string;
+  event_type: string;
+  entity_type: string;
+  entity_id: string;
+  summary: string;
+  severity: 'info' | 'warning' | 'critical';
+  metadata: Record<string, unknown>;
+  created_at: string;
+}
+
+// ── Health Scoring ─────────────────────────────────────────────
+
+export interface EngagementHealth {
+  score: number;
+  deliverables_on_track: number;
+  deliverables_overdue: number;
+  deliverables_total: number;
+  action_items_overdue: number;
+  phase_distribution: Record<string, number>;
+}
+
+export interface RiskPosture {
+  score: number;
+  total_risks: number;
+  open_risks: number;
+  critical_risks: number;
+  weighted_severity: number;
+  trend: 'improving' | 'stable' | 'worsening';
+}
+
+export interface RelationshipHealth {
+  score: number;
+  days_since_last_interaction: number;
+  stakeholders_with_gaps: number;
+  total_stakeholders: number;
+}
+
+export interface ClientHealthReport {
+  client_name: string;
+  overall_score: number;
+  grade: 'A' | 'B' | 'C' | 'D' | 'F';
+  engagement_health: EngagementHealth;
+  risk_posture: RiskPosture;
+  relationship_health: RelationshipHealth;
+  computed_at: string;
+  alerts: string[];
+}
+
+// ── Briefing ───────────────────────────────────────────────────
+
+export interface BriefingData {
+  client_name: string;
+  since: string;
+  new_analyses: { file_path: string; doc_type: string; summary: string }[];
+  overdue_items: { description: string; owner: string; due_date: string }[];
+  risk_changes: { description: string; severity: string; status: string }[];
+  engagement_updates: { name: string; phase: string; change: string }[];
+  alert_count: number;
+}
+
+// ── Command Palette ────────────────────────────────────────────
+
+export interface CommandPaletteItem {
+  id: string;
+  type: 'client' | 'engagement' | 'risk' | 'document' | 'stakeholder' | 'action' | 'agent_command';
+  label: string;
+  description?: string;
+  icon?: string;
+  action: () => void;
 }

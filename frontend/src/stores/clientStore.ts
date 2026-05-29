@@ -1,5 +1,8 @@
 import { create } from 'zustand';
-import type { FileNode, ChatMessage, ClientMemory, McpServerStatus, SourceChip, UploadProgress } from '@/types';
+import type {
+  FileNode, ChatMessage, ClientMemory, McpServerStatus, SourceChip,
+  UploadProgress, Notification, AgentReasoningStep, ClientHealthReport,
+} from '@/types';
 
 interface ClientStore {
   // Client
@@ -59,6 +62,36 @@ interface ClientStore {
   // MCP panel
   showMCPPanel: boolean;
   setShowMCPPanel: (show: boolean) => void;
+
+  // Notifications
+  notifications: Notification[];
+  unreadCount: number;
+  addNotification: (n: Notification) => void;
+  markNotificationRead: (id: string) => void;
+  markAllNotificationsRead: () => void;
+
+  // Command palette
+  commandPaletteOpen: boolean;
+  setCommandPaletteOpen: (open: boolean) => void;
+
+  // Notification drawer
+  notificationDrawerOpen: boolean;
+  setNotificationDrawerOpen: (open: boolean) => void;
+
+  // Search & filters
+  globalSearchQuery: string;
+  setGlobalSearchQuery: (q: string) => void;
+  activeFilters: Record<string, string[]>;
+  setActiveFilters: (key: string, values: string[]) => void;
+  clearFilters: () => void;
+
+  // Client health
+  clientHealthScores: Record<string, ClientHealthReport>;
+  setClientHealthScore: (name: string, report: ClientHealthReport) => void;
+
+  // Agent reasoning (streaming)
+  streamReasoning: AgentReasoningStep[];
+  addReasoningStep: (step: AgentReasoningStep) => void;
 }
 
 export const useClientStore = create<ClientStore>((set) => ({
@@ -93,7 +126,7 @@ export const useClientStore = create<ClientStore>((set) => ({
     set((state) => ({ streamBuffer: state.streamBuffer + token })),
   addStreamSource: (source) =>
     set((state) => ({ streamSources: [...state.streamSources, source] })),
-  startStream: () => set({ isStreaming: true, streamBuffer: '', streamSources: [] }),
+  startStream: () => set({ isStreaming: true, streamBuffer: '', streamSources: [], streamReasoning: [] }),
   finalizeStream: () =>
     set((state) => {
       if (!state.streamBuffer) return { isStreaming: false };
@@ -103,12 +136,14 @@ export const useClientStore = create<ClientStore>((set) => ({
         content: state.streamBuffer,
         sources: state.streamSources,
         timestamp: new Date().toISOString(),
+        reasoning: state.streamReasoning.length > 0 ? [...state.streamReasoning] : undefined,
       };
       return {
         messages: [...state.messages, msg],
         isStreaming: false,
         streamBuffer: '',
         streamSources: [],
+        streamReasoning: [],
       };
     }),
   clearMessages: () => set({ messages: [] }),
@@ -143,4 +178,58 @@ export const useClientStore = create<ClientStore>((set) => ({
 
   showMCPPanel: false,
   setShowMCPPanel: (show) => set({ showMCPPanel: show }),
+
+  // Notifications
+  notifications: [],
+  unreadCount: 0,
+  addNotification: (n) =>
+    set((state) => ({
+      notifications: [n, ...state.notifications].slice(0, 100),
+      unreadCount: state.unreadCount + 1,
+    })),
+  markNotificationRead: (id) =>
+    set((state) => {
+      const updated = state.notifications.map((n) =>
+        n.id === id ? { ...n, read: true } : n
+      );
+      return {
+        notifications: updated,
+        unreadCount: updated.filter((n) => !n.read).length,
+      };
+    }),
+  markAllNotificationsRead: () =>
+    set((state) => ({
+      notifications: state.notifications.map((n) => ({ ...n, read: true })),
+      unreadCount: 0,
+    })),
+
+  // Command palette
+  commandPaletteOpen: false,
+  setCommandPaletteOpen: (open) => set({ commandPaletteOpen: open }),
+
+  // Notification drawer
+  notificationDrawerOpen: false,
+  setNotificationDrawerOpen: (open) => set({ notificationDrawerOpen: open }),
+
+  // Search & filters
+  globalSearchQuery: '',
+  setGlobalSearchQuery: (q) => set({ globalSearchQuery: q }),
+  activeFilters: {},
+  setActiveFilters: (key, values) =>
+    set((state) => ({
+      activeFilters: { ...state.activeFilters, [key]: values },
+    })),
+  clearFilters: () => set({ activeFilters: {} }),
+
+  // Client health
+  clientHealthScores: {},
+  setClientHealthScore: (name, report) =>
+    set((state) => ({
+      clientHealthScores: { ...state.clientHealthScores, [name]: report },
+    })),
+
+  // Agent reasoning
+  streamReasoning: [],
+  addReasoningStep: (step) =>
+    set((state) => ({ streamReasoning: [...state.streamReasoning, step] })),
 }));
