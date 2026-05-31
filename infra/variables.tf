@@ -44,7 +44,3 @@ variable "entra_client_id" {
   type = string
 }
 
-variable "entra_client_secret" {
-  type      = string
-  sensitive = true
-}

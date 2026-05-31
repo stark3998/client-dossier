@@ -34,7 +34,6 @@ class Settings(BaseSettings):
     # Auth
     ENTRA_CLIENT_ID: str = ""
     ENTRA_TENANT_ID: str = ""
-    ENTRA_CLIENT_SECRET: str = ""
     LOCAL_MODE: bool = False
 
     # MCP

@@ -4,7 +4,7 @@ A full-stack AI-powered consulting intelligence platform. Ingests client documen
 
 ## Architecture
 
-```
+```text
 Browser (React 18 SPA + Tailwind CSS)
   |
   +-- MSAL auth (Entra ID) or LOCAL_MODE bypass
@@ -34,7 +34,7 @@ Browser (React 18 SPA + Tailwind CSS)
 ## Tech Stack
 
 | Layer | Technology |
-|---|---|
+| --- | --- |
 | Frontend | React 18, Vite 5, TypeScript 5, Tailwind CSS 3, Zustand, React Router 6, MSAL |
 | Backend | Python 3.11, FastAPI, Semantic Kernel, Pydantic v2 |
 | LLM | Azure OpenAI gpt-4o (chat) + text-embedding-3-large (embeddings, 3072 dims) |
@@ -47,7 +47,7 @@ Browser (React 18 SPA + Tailwind CSS)
 
 ## Project Structure
 
-```
+```text
 /
 +-- backend/
 |   +-- app/
@@ -194,9 +194,9 @@ This creates a `Contoso` client folder with sample documents in `./data/`.
 docker compose up
 ```
 
-- Backend: http://localhost:8000 (hot reload via volume mount)
-- Frontend: http://localhost:5173 (Vite dev server)
-- API docs: http://localhost:8000/docs
+- Backend: <http://localhost:8000> (hot reload via volume mount)
+- Frontend: <http://localhost:5173> (Vite dev server)
+- API docs: <http://localhost:8000/docs>
 
 ### 3. Option B: Run services directly
 
@@ -214,12 +214,12 @@ npm run dev
 
 ### 4. Open the application
 
-Navigate to http://localhost:5173. In LOCAL_MODE, authentication is bypassed automatically.
+Navigate to <http://localhost:5173>. In LOCAL_MODE, authentication is bypassed automatically.
 
 ## URL Routes
 
 | Route | View |
-|---|---|
+| --- | --- |
 | `/` | Client dashboard (list all clients, onboard new clients) |
 | `/clients/:clientName` | Three-panel workspace (Files/Tools, Chat, Insights) |
 | `/clients/:clientName/engagements` | Full-page Kanban engagement tracker |
@@ -232,28 +232,28 @@ Navigate to http://localhost:5173. In LOCAL_MODE, authentication is bypassed aut
 ### Health Probes
 
 | Method | Path | Description |
-|---|---|---|
+| --- | --- | --- |
 | GET | `/health` | Liveness probe (always 200) |
 | GET | `/ready` | Readiness probe (checks Cosmos DB + Search) |
 
 ### Client Management
 
 | Method | Path | Description |
-|---|---|---|
+| --- | --- | --- |
 | GET | `/api/clients` | List all known clients (from filesystem + master DB) |
 | POST | `/api/clients` | Onboard a new client (creates folder + isolated DB + initial memory) |
 
 ### Chat
 
 | Method | Path | Description |
-|---|---|---|
-| WebSocket | `/ws/chat` | Streaming chat with source citations. Protocol: send `{type, content, client_name}`, receive `{type: token|source|done|error}` |
+| --- | --- | --- |
+| WebSocket | `/ws/chat` | Streaming chat with source citations. Protocol: send `{type, content, client_name}`, receive `{type: token/source/done/error}` |
 | POST | `/api/chat` | Non-streaming REST chat fallback |
 
 ### Files
 
 | Method | Path | Description |
-|---|---|---|
+| --- | --- | --- |
 | GET | `/api/files/tree?path=` | Recursive file tree from OneDrive sync path |
 | GET | `/api/files/preview?path=` | Extracted text preview of a document |
 | POST | `/api/files/upload` | Upload a file (multipart: `file` + `client_name`). Auto-triggers ingestion + LLM analysis |
@@ -261,14 +261,14 @@ Navigate to http://localhost:5173. In LOCAL_MODE, authentication is bypassed aut
 ### Ingestion
 
 | Method | Path | Description |
-|---|---|---|
+| --- | --- | --- |
 | POST | `/api/ingest` | Trigger ingestion for a path. Body: `{path, client_name}` |
 | GET | `/api/ingest/{job_id}` | Poll ingestion job status and progress |
 
 ### Client Memory
 
 | Method | Path | Description |
-|---|---|---|
+| --- | --- | --- |
 | GET | `/api/insights?client_name=` | Get full client memory (stakeholders, engagements, pain points, etc.) |
 | GET | `/api/memory/{client_name}` | Get raw client memory document |
 | PUT | `/api/memory/{client_name}` | Update client memory fields |
@@ -276,14 +276,14 @@ Navigate to http://localhost:5173. In LOCAL_MODE, authentication is bypassed aut
 ### Document Analysis
 
 | Method | Path | Description |
-|---|---|---|
+| --- | --- | --- |
 | GET | `/api/analysis/{client_name}` | List all LLM analysis results for a client |
 | GET | `/api/analysis/{client_name}/{id}` | Get a specific analysis result |
 
 ### Engagements
 
 | Method | Path | Description |
-|---|---|---|
+| --- | --- | --- |
 | GET | `/api/clients/{name}/engagements` | List all engagements |
 | POST | `/api/clients/{name}/engagements` | Create an engagement |
 | GET | `/api/clients/{name}/engagements/{id}` | Get engagement details |
@@ -293,7 +293,7 @@ Navigate to http://localhost:5173. In LOCAL_MODE, authentication is bypassed aut
 ### Deliverables
 
 | Method | Path | Description |
-|---|---|---|
+| --- | --- | --- |
 | GET | `/api/clients/{name}/engagements/{id}/deliverables` | List deliverables for an engagement |
 | POST | `/api/clients/{name}/engagements/{id}/deliverables` | Create a deliverable |
 | PUT | `/api/clients/{name}/deliverables/{id}` | Update a deliverable |
@@ -301,7 +301,7 @@ Navigate to http://localhost:5173. In LOCAL_MODE, authentication is bypassed aut
 ### Risks
 
 | Method | Path | Description |
-|---|---|---|
+| --- | --- | --- |
 | GET | `/api/clients/{name}/engagements/{id}/risks` | List risks for an engagement |
 | POST | `/api/clients/{name}/engagements/{id}/risks` | Create a risk |
 | GET | `/api/clients/{name}/risks` | List all risks across all engagements |
@@ -309,27 +309,27 @@ Navigate to http://localhost:5173. In LOCAL_MODE, authentication is bypassed aut
 ### Status Updates
 
 | Method | Path | Description |
-|---|---|---|
+| --- | --- | --- |
 | GET | `/api/clients/{name}/engagements/{id}/status-updates` | List status updates |
 | POST | `/api/clients/{name}/engagements/{id}/status-updates` | Create a status update |
 
 ### Interactions
 
 | Method | Path | Description |
-|---|---|---|
+| --- | --- | --- |
 | GET | `/api/clients/{name}/interactions` | List all client interactions |
 | POST | `/api/clients/{name}/interactions` | Log a new interaction |
 
 ### Timeline
 
 | Method | Path | Description |
-|---|---|---|
+| --- | --- | --- |
 | GET | `/api/clients/{name}/timeline?limit=50` | Unified timeline merging interactions, status updates, and analysis events |
 
 ### MCP Server Management
 
 | Method | Path | Description |
-|---|---|---|
+| --- | --- | --- |
 | GET | `/api/mcp/servers` | List all configured MCP servers |
 | POST | `/api/mcp/servers` | Register a new MCP server |
 | GET | `/api/mcp/servers/{id}` | Get server details |
@@ -340,7 +340,7 @@ Navigate to http://localhost:5173. In LOCAL_MODE, authentication is bypassed aut
 ### Tools Management
 
 | Method | Path | Description |
-|---|---|---|
+| --- | --- | --- |
 | GET | `/api/tools` | List all available tools (built-in + MCP + custom) |
 | GET | `/api/tools/{plugin}/{function}` | Get tool details and parameter schema |
 | POST | `/api/tools/invoke` | Invoke a tool. Body: `{plugin, function, arguments}` |
@@ -355,7 +355,7 @@ Navigate to http://localhost:5173. In LOCAL_MODE, authentication is bypassed aut
 Provisioned by Terraform. Contains shared configuration.
 
 | Container | Partition Key | Purpose |
-|---|---|---|
+| --- | --- | --- |
 | `clients` | `/id` | Client registry and metadata |
 | `mcp_servers` | `/id` | MCP server configurations (shared across clients) |
 | `custom_tools` | `/id` | Custom tool definitions (shared across clients) |
@@ -365,7 +365,7 @@ Provisioned by Terraform. Contains shared configuration.
 Created dynamically when a client is onboarded. Full data isolation per client.
 
 | Container | Partition Key | Purpose |
-|---|---|---|
+| --- | --- | --- |
 | `memories` | `/id` | Client memory (stakeholders, engagements, pain points, priorities) |
 | `doc_index` | `/file_path` | Document tracking with content hashes for incremental sync |
 | `analyses` | `/file_path` | LLM analysis results per document |
@@ -380,7 +380,7 @@ Created dynamically when a client is onboarded. Full data isolation per client.
 The Semantic Kernel agent has these built-in tools:
 
 | Tool | Plugin | Description |
-|---|---|---|
+| --- | --- | --- |
 | `search_documents` | Search | Hybrid vector + BM25 search across indexed client documents |
 | `recall_client_memory` | Memory | Retrieve full client memory (stakeholders, priorities, etc.) |
 | `update_client_memory` | Memory | Store new facts about a client |
@@ -416,7 +416,7 @@ When a file is uploaded or ingested, the system runs a two-stage pipeline:
 ### Supported Document Types
 
 | Extension | Parser | Notes |
-|---|---|---|
+| --- | --- | --- |
 | `.docx` | python-docx | Preserves heading hierarchy |
 | `.pptx` | python-pptx | One chunk per slide |
 | `.xlsx` | openpyxl | One chunk per sheet, column headers as prefix |
@@ -439,7 +439,7 @@ MCP (Model Context Protocol) servers can be added at runtime from the UI. The sy
 ### Auth Types
 
 | Type | Config |
-|---|---|
+| --- | --- |
 | `none` | No authentication |
 | `api_key` | `{header_name: "X-API-Key", api_key: "..."}` |
 | `bearer` | `{token: "..."}` |
@@ -463,7 +463,7 @@ Create prompt-based tools from the UI that become available to the agent.
 
 ### Example Custom Tool
 
-```
+```text
 Name: summarize_for_executive
 Description: Summarize client information for an executive audience
 Prompt Template: Summarize the following client information for a C-suite executive briefing. Focus on strategic impact, financial implications, and recommended next steps. Keep it under 200 words.
@@ -474,7 +474,7 @@ Client info: {{$input}}
 ## Environment Variables
 
 | Variable | Default | Required | Description |
-|---|---|---|---|
+| --- | --- | --- | --- |
 | `AZURE_OPENAI_ENDPOINT` | | Yes (non-local) | Azure OpenAI endpoint URL |
 | `AZURE_OPENAI_API_KEY` | | Yes (non-local) | Azure OpenAI API key |
 | `AZURE_OPENAI_DEPLOYMENT` | `gpt-4o` | No | Chat model deployment name |
@@ -491,7 +491,6 @@ Client info: {{$input}}
 | `ONEDRIVE_SYNC_PATH` | `/mnt/onedrive` | No | Base path for client documents |
 | `ENTRA_CLIENT_ID` | | Yes (non-local) | App registration client ID |
 | `ENTRA_TENANT_ID` | | Yes (non-local) | Azure AD tenant ID |
-| `ENTRA_CLIENT_SECRET` | | Yes (non-local) | App registration secret |
 | `LOCAL_MODE` | `false` | No | Skip auth, use in-memory stubs |
 | `MCP_MS_LEARN_ENABLED` | `false` | No | Enable MS Learn MCP plugin |
 | `MCP_MS_LEARN_ENDPOINT` | | No | MS Learn MCP endpoint URL |
@@ -530,7 +529,7 @@ terraform apply tfplan
 ### Terraform Modules
 
 | Module | Resources |
-|---|---|
+| --- | --- |
 | `acr` | Azure Container Registry (Basic SKU) |
 | `cosmos` | Cosmos DB serverless account + master database + `clients` container |
 | `search` | Azure AI Search (Standard SKU) |
@@ -542,7 +541,7 @@ Per-client databases are created dynamically by the application on client onboar
 ### Outputs
 
 | Output | Description |
-|---|---|
+| --- | --- |
 | `acr_login_server` | ACR login URL |
 | `cosmos_endpoint` | Cosmos DB endpoint |
 | `search_endpoint` | Azure AI Search endpoint |
@@ -574,7 +573,7 @@ Runs on push to `main`:
 ### Required GitHub Secrets
 
 | Secret | Description |
-|---|---|
+| --- | --- |
 | `AZURE_CLIENT_ID` | Service principal client ID (OIDC federated) |
 | `AZURE_CLIENT_SECRET` | Service principal secret (for Terraform ARM provider) |
 | `AZURE_TENANT_ID` | Azure AD tenant ID |
@@ -587,7 +586,6 @@ Runs on push to `main`:
 | `AZURE_OPENAI_EMBEDDING_DEPLOYMENT` | Embedding model deployment |
 | `ENTRA_TENANT_ID` | Entra tenant ID |
 | `ENTRA_CLIENT_ID` | App registration client ID |
-| `ENTRA_CLIENT_SECRET` | App registration secret |
 | `NAME_SUFFIX` | Resource name suffix (e.g., `prod01`) |
 | `BACKEND_FQDN` | Deployed backend FQDN (for smoke test) |
 | `FRONTEND_FQDN` | Deployed frontend FQDN (for smoke test) |
@@ -655,7 +653,7 @@ npm run lint
 ## Key Design Decisions
 
 | Decision | Choice | Rationale |
-|---|---|---|
+| --- | --- | --- |
 | Per-client databases | Isolated Cosmos DBs per client | Data isolation, independent scaling, compliance |
 | Auto-analysis | LLM extracts entities on upload, auto-merges into memory | Removes manual data entry, builds intelligence passively |
 | Dynamic MCP | Hot-reload MCP servers at runtime | No restart needed to add integrations |

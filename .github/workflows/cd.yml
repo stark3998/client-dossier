@@ -97,7 +97,6 @@ jobs:
             -var="azure_openai_embedding_deployment=${{ secrets.AZURE_OPENAI_EMBEDDING_DEPLOYMENT }}" \
             -var="entra_tenant_id=${{ secrets.ENTRA_TENANT_ID }}" \
             -var="entra_client_id=${{ secrets.ENTRA_CLIENT_ID }}" \
-            -var="entra_client_secret=${{ secrets.ENTRA_CLIENT_SECRET }}" \
             -var="name_suffix=${{ secrets.NAME_SUFFIX }}"
         env:
           ARM_USE_OIDC: true

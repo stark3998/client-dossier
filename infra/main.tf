@@ -102,7 +102,6 @@ module "container_apps" {
     AZURE_OPENAI_API_KEY                  = var.azure_openai_api_key
     AZURE_SEARCH_API_KEY                  = module.search.api_key
     COSMOS_KEY                            = module.cosmos.primary_key
-    ENTRA_CLIENT_SECRET                   = var.entra_client_secret
     APPLICATIONINSIGHTS_CONNECTION_STRING = module.app_insights.connection_string
   }
 
