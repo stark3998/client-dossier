@@ -4,11 +4,13 @@ import { FileTree } from '@/components/filebrowser/FileTree';
 import { FileUpload } from '@/components/filebrowser/FileUpload';
 import { ToolBrowser } from '@/components/tools/ToolBrowser';
 import { useFileTree } from '@/hooks/useFileTree';
-import { VscRefresh } from 'react-icons/vsc';
+import { useSync } from '@/hooks/useSync';
+import { VscRefresh, VscSync } from 'react-icons/vsc';
 
 export function Sidebar() {
   const { sidebarTab, setSidebarTab } = useClientStore();
   const { isLoading, refresh } = useFileTree();
+  const { sync, isSyncing, progress, error } = useSync();
 
   return (
     <div className="flex flex-col h-full bg-bg-panel">
@@ -34,14 +36,31 @@ export function Sidebar() {
         <>
           <div className="flex items-center justify-between px-3 h-8 shrink-0">
             <span className="text-[10px] text-text-muted uppercase">Explorer</span>
-            <button
-              type="button"
-              onClick={refresh}
-              className="text-text-muted hover:text-text-primary transition-colors"
-              title="Refresh"
-            >
-              <VscRefresh size={14} className={isLoading ? 'animate-spin' : ''} />
-            </button>
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={sync}
+                disabled={isSyncing}
+                className="text-text-muted hover:text-text-primary transition-colors disabled:opacity-50"
+                title={
+                  error
+                    ? `Sync error: ${error}`
+                    : isSyncing && progress.total > 0
+                    ? `Syncing ${progress.processed}/${progress.total}`
+                    : 'Sync knowledge'
+                }
+              >
+                <VscSync size={14} className={isSyncing ? 'animate-spin' : ''} />
+              </button>
+              <button
+                type="button"
+                onClick={refresh}
+                className="text-text-muted hover:text-text-primary transition-colors"
+                title="Refresh"
+              >
+                <VscRefresh size={14} className={isLoading ? 'animate-spin' : ''} />
+              </button>
+            </div>
           </div>
           <FileUpload />
           <div className="flex-1 overflow-y-auto px-1 py-1">

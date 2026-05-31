@@ -1,5 +1,6 @@
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
+import { useTheme } from '@/contexts/ThemeContext';
 import { SourceCard } from './SourceCard';
 import type { ChatMessage } from '@/types';
 
@@ -8,6 +9,7 @@ interface Props {
 }
 
 export function MessageBubble({ message }: Props) {
+  const { isDark } = useTheme();
   const isUser = message.role === 'user';
 
   return (
@@ -23,7 +25,7 @@ export function MessageBubble({ message }: Props) {
           {isUser ? (
             <p className="whitespace-pre-wrap">{message.content}</p>
           ) : (
-            <div className="prose prose-invert prose-sm max-w-none [&>*:first-child]:mt-0 [&>*:last-child]:mb-0">
+            <div className={`prose ${isDark ? 'prose-invert' : ''} prose-sm max-w-none [&>*:first-child]:mt-0 [&>*:last-child]:mb-0`}>
               <ReactMarkdown remarkPlugins={[remarkGfm]}>
                 {message.content}
               </ReactMarkdown>

@@ -3,17 +3,17 @@
 @tailwind utilities;
 
 :root {
-  --color-bg-primary: #0d0d0d;
-  --color-bg-secondary: #161616;
-  --color-bg-panel: #1a1a1a;
-  --color-bg-hover: #222222;
-  --color-border: #2a2a2a;
-  --color-accent: #86BC25;
-  --color-accent-bright: #86EB22;
-  --color-accent-blue: #00A3E0;
-  --color-text-primary: #f0f0f0;
-  --color-text-secondary: #888888;
-  --color-text-muted: #555555;
+  --color-bg-primary:     13 13 13;       /* #0d0d0d */
+  --color-bg-secondary:   22 22 22;       /* #161616 */
+  --color-bg-panel:       26 26 26;       /* #1a1a1a */
+  --color-bg-hover:       34 34 34;       /* #222222 */
+  --color-border:         42 42 42;       /* #2a2a2a */
+  --color-accent:         134 188 37;     /* #86BC25 */
+  --color-accent-bright:  134 235 34;     /* #86EB22 */
+  --color-accent-blue:    0 163 224;      /* #00A3E0 */
+  --color-text-primary:   240 240 240;    /* #f0f0f0 */
+  --color-text-secondary: 136 136 136;    /* #888888 */
+  --color-text-muted:     85 85 85;       /* #555555 */
   --font-ui: 'DM Sans', system-ui, sans-serif;
   --font-mono: 'JetBrains Mono', 'Fira Code', monospace;
   --radius-sm: 4px;
@@ -28,10 +28,24 @@
   --color-chart-5: #8b5cf6;
 }
 
+[data-theme="light"] {
+  --color-bg-primary:     245 245 245;    /* MUI grey[100] */
+  --color-bg-secondary:   255 255 255;    /* white */
+  --color-bg-panel:       250 250 250;    /* MUI grey[50] */
+  --color-bg-hover:       238 238 238;    /* MUI grey[200] */
+  --color-border:         224 224 224;    /* MUI grey[300] */
+  --color-accent:         106 154 30;     /* #6a9a1e — WCAG AA on white */
+  --color-accent-bright:  134 188 37;     /* #86BC25 — decorative/hover */
+  --color-accent-blue:    2 119 189;      /* #0277bd */
+  --color-text-primary:   33 33 33;       /* MUI grey[900] */
+  --color-text-secondary: 97 97 97;       /* MUI grey[700] */
+  --color-text-muted:     158 158 158;    /* MUI grey[500] */
+}
+
 body {
   margin: 0;
-  background-color: var(--color-bg-primary);
-  color: var(--color-text-primary);
+  background-color: rgb(var(--color-bg-primary));
+  color: rgb(var(--color-text-primary));
   font-family: var(--font-ui);
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
@@ -41,22 +55,30 @@ body {
   box-sizing: border-box;
 }
 
+/* Applied briefly during theme toggle for smooth color transitions */
+.theme-transitioning *,
+.theme-transitioning *::before,
+.theme-transitioning *::after {
+  transition: background-color 200ms ease, color 200ms ease,
+              border-color 200ms ease, box-shadow 200ms ease !important;
+}
+
 ::-webkit-scrollbar {
   width: 6px;
   height: 6px;
 }
 
 ::-webkit-scrollbar-track {
-  background: var(--color-bg-secondary);
+  background: rgb(var(--color-bg-secondary));
 }
 
 ::-webkit-scrollbar-thumb {
-  background: var(--color-border);
+  background: rgb(var(--color-border));
   border-radius: 3px;
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background: var(--color-text-muted);
+  background: rgb(var(--color-text-muted));
 }
 
 @keyframes pulse-dot {
@@ -111,4 +133,25 @@ body {
 
 .animate-pulse-subtle {
   animation: pulse-subtle 2s ease-in-out infinite;
+}
+
+/* MUI-inspired animations */
+@keyframes press {
+  0%   { transform: scale(1); }
+  50%  { transform: scale(0.96); }
+  100% { transform: scale(1); }
+}
+
+.animate-press {
+  animation: press 150ms ease-out;
+}
+
+@keyframes panel-expand {
+  from { opacity: 0; transform: translateY(-4px) scaleY(0.97); }
+  to   { opacity: 1; transform: translateY(0) scaleY(1); }
+}
+
+.animate-panel-expand {
+  animation: panel-expand 200ms cubic-bezier(0.4, 0, 0.2, 1);
+  transform-origin: top;
 }

@@ -4,6 +4,7 @@ import {
   BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid,
   PieChart, Pie, Cell, Legend,
 } from 'recharts';
+import { useTheme } from '@/contexts/ThemeContext';
 import type { ClientHealthReport } from '@/types';
 
 interface DashboardChartsProps {
@@ -11,26 +12,29 @@ interface DashboardChartsProps {
 }
 
 const GRADE_COLORS: Record<string, string> = {
-  A: '#86BC25',  // chart-1
-  B: '#00A3E0',  // chart-2
-  C: '#f59e0b',  // chart-3
-  D: '#ef4444',  // chart-4
-  F: '#8b5cf6',  // chart-5
+  A: '#86BC25',
+  B: '#00A3E0',
+  C: '#f59e0b',
+  D: '#ef4444',
+  F: '#8b5cf6',
 };
 
-const AXIS_STYLE = { fill: '#888888', fontSize: 11 };
-const TOOLTIP_STYLE = {
-  contentStyle: { backgroundColor: '#1a1a1a', border: '1px solid #2a2a2a', borderRadius: 6, fontSize: 12 },
-  labelStyle: { color: '#f0f0f0' },
-  itemStyle: { color: '#f0f0f0' },
-};
-
-/**
- * Two side-by-side Recharts visualizations:
- * 1. Risk Overview — open vs critical risks per client (BarChart)
- * 2. Health Distribution — grade distribution A-F (PieChart)
- */
 export function DashboardCharts({ healthScores }: DashboardChartsProps) {
+  const { isDark } = useTheme();
+
+  const axisStyle = { fill: isDark ? '#888888' : '#616161', fontSize: 11 };
+  const tooltipStyle = {
+    contentStyle: {
+      backgroundColor: isDark ? '#1a1a1a' : '#ffffff',
+      border: `1px solid ${isDark ? '#2a2a2a' : '#e0e0e0'}`,
+      borderRadius: 6,
+      fontSize: 12,
+    },
+    labelStyle: { color: isDark ? '#f0f0f0' : '#212121' },
+    itemStyle: { color: isDark ? '#f0f0f0' : '#212121' },
+  };
+  const gridStroke = isDark ? '#2a2a2a' : '#e0e0e0';
+
   const riskData = useMemo(() =>
     Object.entries(healthScores).map(([name, report]) => ({
       name: name.length > 12 ? `${name.slice(0, 11)}...` : name,
@@ -65,10 +69,10 @@ export function DashboardCharts({ healthScores }: DashboardChartsProps) {
         </h3>
         <ResponsiveContainer width="100%" height={220}>
           <BarChart data={riskData} barGap={2}>
-            <CartesianGrid strokeDasharray="3 3" stroke="#2a2a2a" />
-            <XAxis dataKey="name" tick={AXIS_STYLE} axisLine={false} tickLine={false} />
-            <YAxis tick={AXIS_STYLE} axisLine={false} tickLine={false} allowDecimals={false} />
-            <Tooltip {...TOOLTIP_STYLE} />
+            <CartesianGrid strokeDasharray="3 3" stroke={gridStroke} />
+            <XAxis dataKey="name" tick={axisStyle} axisLine={false} tickLine={false} />
+            <YAxis tick={axisStyle} axisLine={false} tickLine={false} allowDecimals={false} />
+            <Tooltip {...tooltipStyle} />
             <Bar dataKey="open" name="Open" fill="#86BC25" radius={[3, 3, 0, 0]} />
             <Bar dataKey="critical" name="Critical" fill="#ef4444" radius={[3, 3, 0, 0]} />
           </BarChart>
@@ -97,7 +101,7 @@ export function DashboardCharts({ healthScores }: DashboardChartsProps) {
                 <Cell key={entry.grade} fill={GRADE_COLORS[entry.grade] ?? '#555555'} />
               ))}
             </Pie>
-            <Tooltip {...TOOLTIP_STYLE} />
+            <Tooltip {...tooltipStyle} />
             <Legend
               formatter={(value: string) => <span className="text-text-secondary text-xs">{value}</span>}
             />

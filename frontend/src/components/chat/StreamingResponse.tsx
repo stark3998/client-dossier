@@ -1,5 +1,6 @@
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
+import { useTheme } from '@/contexts/ThemeContext';
 import { SourceCard } from './SourceCard';
 import type { SourceChip } from '@/types';
 
@@ -9,6 +10,7 @@ interface Props {
 }
 
 export function StreamingResponse({ content, sources }: Props) {
+  const { isDark } = useTheme();
   return (
     <div className="flex justify-start">
       <div className="max-w-[80%]">
@@ -20,7 +22,7 @@ export function StreamingResponse({ content, sources }: Props) {
           </div>
         )}
         <div className="bg-bg-panel rounded-md px-4 py-3 text-sm text-text-primary">
-          <div className="prose prose-invert prose-sm max-w-none [&>*:first-child]:mt-0 [&>*:last-child]:mb-0">
+          <div className={`prose ${isDark ? 'prose-invert' : ''} prose-sm max-w-none [&>*:first-child]:mt-0 [&>*:last-child]:mb-0`}>
             <ReactMarkdown remarkPlugins={[remarkGfm]}>
               {content}
             </ReactMarkdown>

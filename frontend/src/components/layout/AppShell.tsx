@@ -2,15 +2,18 @@
 import { useState, useCallback, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useClientStore } from '@/stores/clientStore';
+import { useTheme } from '@/contexts/ThemeContext';
 import { Sidebar } from './Sidebar';
 import { InsightsPanel } from './InsightsPanel';
 import { ChatTerminal } from '@/components/chat/ChatTerminal';
 import { MCPServerPanel } from '@/components/settings/MCPServerPanel';
 import { ToastContainer } from '@/components/common/Toast';
 import { VscLayoutSidebarLeft, VscLayoutSidebarRight, VscArrowLeft } from 'react-icons/vsc';
+import { BsSun, BsMoon } from 'react-icons/bs';
 
 export function AppShell() {
   const navigate = useNavigate();
+  const { isDark, toggleTheme } = useTheme();
   const {
     leftPanelWidth, rightPanelWidth,
     leftPanelCollapsed, rightPanelCollapsed,
@@ -67,6 +70,15 @@ export function AppShell() {
             </button>
             <span className="text-sm font-semibold text-accent">{activeClient || 'CIA'}</span>
           </div>
+          <button
+            type="button"
+            onClick={toggleTheme}
+            title={isDark ? 'Switch to light mode' : 'Switch to dark mode'}
+            aria-label={isDark ? 'Switch to light mode' : 'Switch to dark mode'}
+            className="text-text-muted hover:text-text-primary transition-colors p-1 rounded"
+          >
+            {isDark ? <BsSun size={14} /> : <BsMoon size={14} />}
+          </button>
         </header>
         <div className="flex-1 overflow-hidden">
           {activeTab === 'files' && <Sidebar />}
@@ -106,7 +118,16 @@ export function AppShell() {
           </button>
           <span className="text-sm font-bold text-accent tracking-wide">{activeClient || 'CLIENT INTELLIGENCE AGENT'}</span>
         </div>
-        <div className="flex items-center gap-4">
+        <div className="flex items-center gap-3">
+          <button
+            type="button"
+            onClick={toggleTheme}
+            title={isDark ? 'Switch to light mode' : 'Switch to dark mode'}
+            aria-label={isDark ? 'Switch to light mode' : 'Switch to dark mode'}
+            className="text-text-muted hover:text-text-primary transition-colors p-1 rounded"
+          >
+            {isDark ? <BsSun size={14} /> : <BsMoon size={14} />}
+          </button>
           <div className="w-2 h-2 rounded-full bg-accent animate-pulse-dot" title="System active" />
         </div>
       </header>
