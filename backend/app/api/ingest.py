@@ -73,8 +73,10 @@ async def get_job_status(job_id: str):
         "mode": job.mode,
         "progress": job.progress,
         "current_file": job.current_file,
+        "current_file_index": job.current_file_index,
         "total_files": job.total_files,
         "processed_files": job.processed_files,
         "skipped_files": job.skipped_files,
+        "file_events": job.file_events,
         "error": job.error,
     }

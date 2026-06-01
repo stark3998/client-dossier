@@ -37,12 +37,13 @@ async def run_ingestion(
     try:
         for i, file_path in enumerate(files):
             job.current_file = file_path
+            job.current_file_index = i + 1
             job.processed_files = i
             if job_repo:
                 await job_repo.upsert(job.model_dump())
 
             try:
-                indexed = await _ingest_file(
+                result = await _ingest_file(
                     file_path=file_path,
                     client_name=job.client_name or _infer_client_name(file_path, target_path),
                     doc_index_repo=doc_index_repo,
@@ -50,13 +51,25 @@ async def run_ingestion(
                     embedding_service=embedding_service,
                     force=force,
                 )
-                if not indexed:
+                if not result["indexed"]:
                     job.skipped_files += 1
+                else:
+                    job.file_events = (job.file_events + [{
+                        "file_name": os.path.basename(file_path),
+                        "status": "done",
+                        "chunks": result["chunks"],
+                        "duration_ms": result["duration_ms"],
+                    }])[-20:]
             except Exception as e:
                 logger.error("Failed to ingest %s: %s", file_path, e)
                 track_event("ingestion.file.failed", {
                     "file_path": file_path, "error_message": str(e)
                 })
+                job.file_events = (job.file_events + [{
+                    "file_name": os.path.basename(file_path),
+                    "status": "error",
+                    "error": str(e)[:120],
+                }])[-20:]
 
         job.status = "done"
         job.processed_files = len(files)
@@ -78,7 +91,7 @@ async def _ingest_file(
     search_service,
     embedding_service,
     force: bool = False,
-) -> bool:
+) -> dict:
     import time
     start = time.time()
 
@@ -93,7 +106,7 @@ async def _ingest_file(
     existing = await doc_index_repo.get(content_hash, file_path)
     if not force and existing and existing.get("content_hash") == content_hash:
         logger.info("Skipping unchanged file: %s", file_path)
-        return False
+        return {"indexed": False, "chunks": 0, "duration_ms": 0}
 
     # Parse
     parsed = parse_document(file_path)
@@ -109,7 +122,7 @@ async def _ingest_file(
 
     if not chunks:
         logger.info("No chunks produced for: %s", file_path)
-        return False
+        return {"indexed": False, "chunks": 0, "duration_ms": int((time.time() - start) * 1000)}
 
     # Embed
     chunks = await embed_chunks(chunks, embedding_service)
@@ -148,7 +161,7 @@ async def _ingest_file(
         "duration_ms": duration_ms,
     })
     logger.info("Ingested %s: %d chunks in %dms", file_path, len(chunks), duration_ms)
-    return True
+    return {"indexed": True, "chunks": len(chunks), "duration_ms": duration_ms}
 
 
 def _discover_files(path: str) -> list[str]:

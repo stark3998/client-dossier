@@ -5,8 +5,33 @@ import { FileTree } from '@/components/filebrowser/FileTree';
 import { FileUpload } from '@/components/filebrowser/FileUpload';
 import { ToolBrowser } from '@/components/tools/ToolBrowser';
 import { useFileTree } from '@/hooks/useFileTree';
-import { useSync } from '@/hooks/useSync';
+import { useSync, type FileEvent } from '@/hooks/useSync';
 import { VscRefresh, VscSync } from 'react-icons/vsc';
+
+function formatDuration(ms: number): string {
+  return ms >= 1000 ? `${(ms / 1000).toFixed(1)}s` : `${ms}ms`;
+}
+
+function EventRow({ ev }: { ev: FileEvent }) {
+  if (ev.status === 'error') {
+    return (
+      <div className="flex items-start gap-1 text-[10px] leading-tight">
+        <span className="text-red-400 shrink-0 mt-px">✗</span>
+        <span className="text-red-400 truncate flex-1" title={ev.error}>{ev.file_name}</span>
+        <span className="text-red-400/70 shrink-0 ml-1 truncate max-w-[90px]" title={ev.error}>{ev.error}</span>
+      </div>
+    );
+  }
+  return (
+    <div className="flex items-center gap-1 text-[10px] leading-tight">
+      <span className="text-accent shrink-0">✓</span>
+      <span className="text-text-muted truncate flex-1">{ev.file_name}</span>
+      <span className="text-text-muted/60 shrink-0 ml-1 whitespace-nowrap">
+        {ev.chunks} chunks · {formatDuration(ev.duration_ms ?? 0)}
+      </span>
+    </div>
+  );
+}
 
 export function Sidebar() {
   const { sidebarTab, setSidebarTab } = useClientStore();
@@ -101,34 +126,48 @@ export function Sidebar() {
             <div className="px-3 py-2 border-b border-border-default">
               {isSyncing ? (
                 <>
+                  {/* Header row: label + file counter */}
                   <div className="flex items-center justify-between mb-1">
                     <span className="text-[10px] text-text-muted">Syncing knowledge…</span>
                     <span className="text-[10px] text-text-muted font-medium">
                       {progress.total > 0
-                        ? `${progress.processed} / ${progress.total} files${progress.skipped > 0 ? ` · ${progress.skipped} unchanged` : ''}`
+                        ? `File ${progress.fileIndex} / ${progress.total}${progress.skipped > 0 ? ` · ${progress.skipped} unchanged` : ''}`
                         : 'Discovering files…'}
                     </span>
                   </div>
+
+                  {/* Progress bar */}
                   <div className="h-1 bg-bg-secondary rounded overflow-hidden mb-1">
                     {progress.total > 0 ? (
                       <div
                         className="h-full rounded bg-accent transition-all duration-500"
-                        style={{ width: `${Math.round((progress.processed / progress.total) * 100)}%` }}
+                        style={{ width: `${Math.round((progress.fileIndex / progress.total) * 100)}%` }}
                       />
                     ) : (
                       <div className="h-full w-1/3 rounded bg-accent/50 animate-pulse" />
                     )}
                   </div>
+
+                  {/* Current file + percentage */}
                   {progress.total > 0 && (
-                    <div className="flex items-center justify-between">
+                    <div className="flex items-center justify-between mb-1">
                       <span className="text-[10px] text-text-muted truncate max-w-[160px]">
                         {progress.currentFile
                           ? (progress.currentFile.split(/[\\/]/).pop() || progress.currentFile)
                           : ''}
                       </span>
                       <span className="text-[10px] text-text-muted shrink-0 ml-1">
-                        {Math.round((progress.processed / progress.total) * 100)}%
+                        {Math.round((progress.fileIndex / progress.total) * 100)}%
                       </span>
+                    </div>
+                  )}
+
+                  {/* Per-file event log (last 4) */}
+                  {progress.fileEvents.length > 0 && (
+                    <div className="mt-1 pt-1 border-t border-border-default space-y-0.5">
+                      {progress.fileEvents.slice(-4).map((ev, i) => (
+                        <EventRow key={i} ev={ev} />
+                      ))}
                     </div>
                   )}
                 </>

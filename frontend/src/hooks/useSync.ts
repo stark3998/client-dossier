@@ -9,12 +9,22 @@ const SYNC_MODE_KEY = 'sync_active_job_mode';
 type SyncMode = 'incremental' | 'complete';
 type FileStatus = 'idle' | 'indexing' | 'done' | 'error' | 'pending';
 
+export interface FileEvent {
+  file_name: string;
+  status: 'done' | 'error';
+  chunks?: number;
+  duration_ms?: number;
+  error?: string;
+}
+
 interface SyncProgress {
   processed: number;
   total: number;
   skipped: number;
+  fileIndex: number;
   currentFile: string;
   mode: SyncMode;
+  fileEvents: FileEvent[];
 }
 
 function collectFilePaths(node: FileNode | null): string[] {
@@ -28,7 +38,7 @@ export function useSync() {
   const { refresh } = useFileTree();
   const [isSyncing, setIsSyncing] = useState(false);
   const [progress, setProgress] = useState<SyncProgress>({
-    processed: 0, total: 0, skipped: 0, currentFile: '', mode: 'incremental',
+    processed: 0, total: 0, skipped: 0, fileIndex: 0, currentFile: '', mode: 'incremental', fileEvents: [],
   });
   const [error, setError] = useState<string | null>(null);
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -97,8 +107,10 @@ export function useSync() {
           processed: job.processed_files ?? 0,
           total: job.total_files ?? 0,
           skipped: job.skipped_files ?? 0,
+          fileIndex: job.current_file_index ?? 0,
           currentFile,
           mode,
+          fileEvents: job.file_events ?? [],
         });
 
         if (job.status === 'done') {
@@ -130,7 +142,7 @@ export function useSync() {
     if (!activeClient || isSyncing) return;
     setIsSyncing(true);
     setError(null);
-    setProgress({ processed: 0, total: 0, skipped: 0, currentFile: '', mode });
+    setProgress({ processed: 0, total: 0, skipped: 0, fileIndex: 0, currentFile: '', mode, fileEvents: [] });
 
     try {
       const res = await fetch('/api/ingest', {
