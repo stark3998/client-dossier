@@ -17,8 +17,9 @@ interface ClientStore {
   setFileTree: (tree: FileNode | null) => void;
   selectFile: (path: string | null) => void;
   toggleFolder: (path: string) => void;
-  ingestionStatus: Record<string, 'idle' | 'indexing' | 'done' | 'error'>;
-  setIngestionStatus: (path: string, status: 'idle' | 'indexing' | 'done' | 'error') => void;
+  ingestionStatus: Record<string, 'idle' | 'indexing' | 'done' | 'error' | 'pending'>;
+  setIngestionStatus: (path: string, status: 'idle' | 'indexing' | 'done' | 'error' | 'pending') => void;
+  setAllIngestionStatuses: (statuses: Record<string, 'idle' | 'indexing' | 'done' | 'error' | 'pending'>) => void;
 
   // Chat
   messages: ChatMessage[];
@@ -116,6 +117,7 @@ export const useClientStore = create<ClientStore>((set) => ({
     set((state) => ({
       ingestionStatus: { ...state.ingestionStatus, [path]: status },
     })),
+  setAllIngestionStatuses: (statuses) => set({ ingestionStatus: statuses }),
 
   messages: [],
   isStreaming: false,

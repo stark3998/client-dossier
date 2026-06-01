@@ -49,17 +49,23 @@ async def startup_services():
     from app.agent.memory_plugin import MemoryPlugin
     from app.agent.file_plugin import FilePlugin
     from app.agent.docgen_plugin import DocumentGenerationPlugin
-
     from app.agent.engagement_plugin import EngagementPlugin
     from app.agent.reporting_plugin import ReportingPlugin
+    from app.agent.web_search_plugin import WebSearchPlugin
+    from app.agent.query_rewriter import QueryRewriter
+
+    search_plugin = SearchPlugin(_search_service, _embedding_service)
+    rewriter = QueryRewriter(kernel, _embedding_service)
+    search_plugin.set_rewriter(rewriter)
 
     plugins = {
-        "Search": SearchPlugin(_search_service, _embedding_service),
+        "Search": search_plugin,
         "Memory": MemoryPlugin(_cosmos_manager),
         "Files": FilePlugin(),
         "DocumentGeneration": DocumentGenerationPlugin(),
         "Engagements": EngagementPlugin(_cosmos_manager, _event_bus),
         "Reporting": ReportingPlugin(_cosmos_manager),
+        "WebSearch": WebSearchPlugin(settings),
     }
 
     from app.agent.planner import AgentPlanner

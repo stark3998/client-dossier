@@ -7,10 +7,17 @@ from app.prompts.loader import load_prompt
 
 logger = logging.getLogger(__name__)
 
+_HYDE_PROMPT = (
+    "Write a 3-sentence excerpt from a professional consulting document that would directly answer "
+    "the following question. Use formal language and domain-specific terminology. "
+    "Output only the excerpt, no preamble.\n\nQuestion: "
+)
+
 
 class QueryRewriter:
-    def __init__(self, kernel):
+    def __init__(self, kernel, embedding_service=None):
         self._kernel = kernel
+        self._embeddings = embedding_service
 
     async def rewrite(self, query: str) -> list[str]:
         """Generate 2-3 search query variants from the user's question."""
@@ -71,3 +78,32 @@ class QueryRewriter:
 
         merged.sort(key=lambda x: x.get("score", 0), reverse=True)
         return merged[:top]
+
+    async def generate_hyde_embedding(self, query: str) -> list[float] | None:
+        """Generate a hypothetical document embedding for the query (HyDE)."""
+        if not self._embeddings:
+            return None
+        try:
+            from semantic_kernel.connectors.ai.chat_completion_client_base import ChatCompletionClientBase
+            from semantic_kernel.contents import ChatHistory
+            from app.agent.kernel import get_execution_settings
+
+            chat_service = self._kernel.get_service(type=ChatCompletionClientBase)
+            history = ChatHistory()
+            history.add_user_message(_HYDE_PROMPT + query)
+
+            settings = get_execution_settings(auto_invoke=False)
+            settings.max_tokens = 200
+            settings.temperature = 0.5
+
+            hypothetical = ""
+            async for chunk in chat_service.get_streaming_chat_message_content(
+                chat_history=history, settings=settings, kernel=self._kernel
+            ):
+                hypothetical += str(chunk)
+
+            if hypothetical.strip():
+                return await self._embeddings.embed_query(hypothetical.strip())
+        except Exception as e:
+            logger.warning("HyDE generation failed: %s", e)
+        return None

@@ -46,6 +46,7 @@ export function FileNode({ node, depth }: Props) {
       <span className="w-4 shrink-0" />
       <VscFile size={16} className="shrink-0 ml-1" />
       <span className="ml-1.5 truncate">{node.name}</span>
+      {status === 'pending' && <span className="ml-auto w-2 h-2 rounded-full border border-text-muted/40 shrink-0" />}
       {status === 'indexing' && <span className="ml-auto w-2 h-2 rounded-full bg-accent-bright animate-pulse-dot shrink-0" />}
       {status === 'done' && <span className="ml-auto w-2 h-2 rounded-full bg-accent shrink-0" />}
       {status === 'error' && <span className="ml-auto w-2 h-2 rounded-full bg-red-500 shrink-0" />}

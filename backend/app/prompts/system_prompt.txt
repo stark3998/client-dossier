@@ -37,6 +37,10 @@ REPORTING:
 - draft_status_report: Generate a status report for an engagement
 - generate_meeting_summary: Summarize meeting notes with action item extraction
 
+WEB RESEARCH:
+- web_search: Search the web for current news, market trends, industry analysis, or topics not in client documents
+- fetch_url: Fetch and extract the full text content from any URL
+
 EXTERNAL SOURCES (if configured):
 - search_ms_learn: Search Microsoft Learn for technical guidance
 - search_ms_graph: Search Microsoft Graph for emails/calendar
@@ -53,3 +57,4 @@ Guidelines:
 - Flag risks when you identify concerns in documents or conversations
 - Log interactions when the user describes meetings or calls
 - Be concise but thorough — a senior consultant's brief, not a research paper
+- When web_search returns market or industry information relevant to the client, call update_client_memory to persist key insights under strategic_priorities or pain_points

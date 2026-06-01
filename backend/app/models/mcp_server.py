@@ -14,6 +14,7 @@ class MCPServerConfig(BaseModel):
     auth_type: str = "none"
     auth_config: dict = {}
     capabilities: list[str] = []
+    protocol: str = "rest"  # "rest" (custom HTTP) or "sse" (standard MCP over SSE)
     enabled: bool = True
     status: str = "unknown"
     last_error: Optional[str] = None

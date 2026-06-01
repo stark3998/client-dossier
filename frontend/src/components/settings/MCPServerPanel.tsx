@@ -2,25 +2,53 @@
 import { useState } from 'react';
 import { useMCPServers } from '@/hooks/useMCPServers';
 import { useClientStore } from '@/stores/clientStore';
-import { VscClose, VscAdd, VscPass, VscTrash } from 'react-icons/vsc';
+import { VscClose, VscAdd, VscPass, VscTrash, VscPackage } from 'react-icons/vsc';
+import { MCP_PRESETS, type MCPPreset } from '@/data/mcpPresets';
 
 export function MCPServerPanel() {
   const { showMCPPanel, setShowMCPPanel } = useClientStore();
   const { servers, addServer, removeServer, testServer, loading } = useMCPServers();
   const [showAdd, setShowAdd] = useState(false);
+  const [showPresets, setShowPresets] = useState(false);
   const [name, setName] = useState('');
   const [endpoint, setEndpoint] = useState('');
   const [description, setDescription] = useState('');
+  const [protocol, setProtocol] = useState<'rest' | 'sse'>('rest');
+  const [authType, setAuthType] = useState<'none' | 'api_key' | 'bearer'>('none');
+  const [authKey, setAuthKey] = useState('');
+  const [authPlaceholder, setAuthPlaceholder] = useState('API Key');
   const [testing, setTesting] = useState<string | null>(null);
 
   if (!showMCPPanel) return null;
 
+  const applyPreset = (preset: MCPPreset) => {
+    setName(preset.name);
+    setEndpoint(preset.endpoint);
+    setDescription(preset.description);
+    setProtocol(preset.protocol);
+    setAuthType(preset.auth_type);
+    setAuthPlaceholder(preset.auth_placeholder ?? 'API Key');
+    setAuthKey('');
+    setShowPresets(false);
+    setShowAdd(true);
+  };
+
   const handleAdd = async () => {
     if (!name.trim() || !endpoint.trim()) return;
-    await addServer({ name: name.trim(), endpoint: endpoint.trim(), description: description.trim() });
-    setName('');
-    setEndpoint('');
-    setDescription('');
+    const authConfig: Record<string, string> = {};
+    if (authType === 'api_key') authConfig['api_key'] = authKey;
+    if (authType === 'bearer') authConfig['token'] = authKey;
+
+    await addServer({
+      name: name.trim(),
+      endpoint: endpoint.trim(),
+      description: description.trim(),
+      protocol,
+      auth_type: authType,
+      auth_config: authConfig,
+    });
+    setName(''); setEndpoint(''); setDescription('');
+    setProtocol('rest'); setAuthType('none'); setAuthKey('');
     setShowAdd(false);
   };
 
@@ -55,14 +83,53 @@ export function MCPServerPanel() {
         </div>
 
         <div className="p-4 space-y-3">
-          <button
-            type="button"
-            onClick={() => setShowAdd(!showAdd)}
-            className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium bg-accent text-bg-primary rounded hover:bg-accent-bright transition-colors w-full justify-center"
-          >
-            <VscAdd size={14} /> Add MCP Server
-          </button>
+          {/* Action buttons */}
+          <div className="flex gap-2">
+            <button
+              type="button"
+              onClick={() => { setShowAdd(!showAdd); setShowPresets(false); }}
+              className="flex-1 flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium bg-accent text-bg-primary rounded hover:bg-accent-bright transition-colors justify-center"
+            >
+              <VscAdd size={14} /> Custom
+            </button>
+            <button
+              type="button"
+              onClick={() => { setShowPresets(!showPresets); setShowAdd(false); }}
+              className="flex-1 flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium bg-bg-secondary text-text-secondary border border-border-default rounded hover:text-text-primary transition-colors justify-center"
+            >
+              <VscPackage size={14} /> Presets
+            </button>
+          </div>
 
+          {/* Presets grid */}
+          {showPresets && (
+            <div className="space-y-2">
+              <p className="text-[10px] text-text-muted uppercase tracking-wider">Select a preset to pre-fill</p>
+              {MCP_PRESETS.map((preset) => (
+                <button
+                  key={preset.name}
+                  type="button"
+                  onClick={() => applyPreset(preset)}
+                  className="w-full text-left p-3 bg-bg-secondary rounded-md hover:bg-bg-hover border border-transparent hover:border-accent/30 transition-colors"
+                >
+                  <div className="text-xs font-medium text-text-primary">{preset.name}</div>
+                  <div className="text-[10px] text-text-muted mt-0.5 line-clamp-2">{preset.description}</div>
+                  <div className="flex gap-1 mt-1.5 flex-wrap">
+                    {preset.capabilities.map((cap) => (
+                      <span key={cap} className="px-1.5 py-0.5 text-[9px] bg-accent/10 text-accent rounded">
+                        {cap}
+                      </span>
+                    ))}
+                    <span className="px-1.5 py-0.5 text-[9px] bg-bg-panel text-text-muted rounded border border-border-default">
+                      {preset.protocol.toUpperCase()}
+                    </span>
+                  </div>
+                </button>
+              ))}
+            </div>
+          )}
+
+          {/* Add / edit form */}
           {showAdd && (
             <div className="p-3 bg-bg-secondary rounded-md space-y-2">
               <input
@@ -87,6 +154,42 @@ export function MCPServerPanel() {
                 className="w-full px-2 py-1.5 text-xs bg-bg-panel border border-border-default rounded text-text-primary placeholder:text-text-muted focus:outline-none focus:ring-2 focus:ring-accent"
               />
               <div className="flex gap-2">
+                <div className="flex-1">
+                  <label className="text-[10px] text-text-muted uppercase tracking-wider block mb-1">Protocol</label>
+                  <select
+                    value={protocol}
+                    onChange={(e) => setProtocol(e.target.value as 'rest' | 'sse')}
+                    aria-label="Protocol"
+                    className="w-full px-2 py-1.5 text-xs bg-bg-panel border border-border-default rounded text-text-primary focus:outline-none focus:ring-2 focus:ring-accent"
+                  >
+                    <option value="rest">REST (custom)</option>
+                    <option value="sse">SSE (standard MCP)</option>
+                  </select>
+                </div>
+                <div className="flex-1">
+                  <label className="text-[10px] text-text-muted uppercase tracking-wider block mb-1">Auth</label>
+                  <select
+                    value={authType}
+                    onChange={(e) => setAuthType(e.target.value as 'none' | 'api_key' | 'bearer')}
+                    aria-label="Auth type"
+                    className="w-full px-2 py-1.5 text-xs bg-bg-panel border border-border-default rounded text-text-primary focus:outline-none focus:ring-2 focus:ring-accent"
+                  >
+                    <option value="none">None</option>
+                    <option value="api_key">API Key</option>
+                    <option value="bearer">Bearer</option>
+                  </select>
+                </div>
+              </div>
+              {authType !== 'none' && (
+                <input
+                  type="password"
+                  value={authKey}
+                  onChange={(e) => setAuthKey(e.target.value)}
+                  placeholder={authPlaceholder}
+                  className="w-full px-2 py-1.5 text-xs bg-bg-panel border border-border-default rounded text-text-primary placeholder:text-text-muted focus:outline-none focus:ring-2 focus:ring-accent"
+                />
+              )}
+              <div className="flex gap-2">
                 <button
                   type="button"
                   onClick={handleAdd}
@@ -105,6 +208,7 @@ export function MCPServerPanel() {
             </div>
           )}
 
+          {/* Server list */}
           {loading ? (
             <div className="text-xs text-text-muted">Loading servers...</div>
           ) : servers.length === 0 ? (
@@ -120,6 +224,9 @@ export function MCPServerPanel() {
                       'bg-text-muted'
                     }`} />
                     <span className="text-xs font-medium text-text-primary">{s.name}</span>
+                    {s.protocol && s.protocol !== 'rest' && (
+                      <span className="text-[9px] px-1 py-0.5 bg-accent/10 text-accent rounded">{s.protocol.toUpperCase()}</span>
+                    )}
                   </div>
                   <div className="flex items-center gap-1">
                     <button

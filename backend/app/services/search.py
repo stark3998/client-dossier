@@ -6,6 +6,14 @@ from app.config import get_settings
 
 logger = logging.getLogger(__name__)
 
+try:
+    from flashrank import Ranker, RerankRequest as FlashRerankRequest
+    _ranker = Ranker(model_name="ms-marco-MiniLM-L-12-v2", cache_dir="/tmp/flashrank")
+    _flashrank_available = True
+except Exception:
+    _ranker = None
+    _flashrank_available = False
+
 
 class SearchService:
     """Azure AI Search wrapper for hybrid vector + BM25 search."""
@@ -121,6 +129,20 @@ class SearchService:
             })
         return results
 
+    def rerank(self, query: str, results: list[dict], top_k: int = 8) -> list[dict]:
+        settings = get_settings()
+        if not settings.RERANK_ENABLED or not _flashrank_available or not results:
+            return results[:top_k]
+        try:
+            passages = [{"id": i, "text": r.get("content", "")} for i, r in enumerate(results)]
+            request = FlashRerankRequest(query=query, passages=passages)
+            reranked = _ranker.rerank(request)
+            ordered = sorted(reranked, key=lambda x: x.get("score", 0), reverse=True)
+            return [results[item["id"]] for item in ordered[:top_k]]
+        except Exception as e:
+            logger.warning("Reranking failed, using original order: %s", e)
+            return results[:top_k]
+
     async def upsert_chunks(self, chunks: list[dict]) -> None:
         self._search_client.upload_documents(documents=chunks)
 
@@ -165,6 +187,9 @@ class LocalSearchService:
                 scored.append({**doc, "score": score})
         scored.sort(key=lambda x: x["score"], reverse=True)
         return scored[:top]
+
+    def rerank(self, query: str, results: list[dict], top_k: int = 8) -> list[dict]:
+        return results[:top_k]
 
     async def upsert_chunks(self, chunks: list[dict]) -> None:
         for chunk in chunks:

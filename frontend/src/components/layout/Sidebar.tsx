@@ -1,4 +1,5 @@
 // frontend/src/components/layout/Sidebar.tsx
+import { useRef, useState, useEffect } from 'react';
 import { useClientStore } from '@/stores/clientStore';
 import { FileTree } from '@/components/filebrowser/FileTree';
 import { FileUpload } from '@/components/filebrowser/FileUpload';
@@ -11,6 +12,20 @@ export function Sidebar() {
   const { sidebarTab, setSidebarTab } = useClientStore();
   const { isLoading, refresh } = useFileTree();
   const { sync, isSyncing, progress, error } = useSync();
+  const [showSyncMenu, setShowSyncMenu] = useState(false);
+  const menuRef = useRef<HTMLDivElement>(null);
+
+  // Close dropdown when clicking outside
+  useEffect(() => {
+    if (!showSyncMenu) return;
+    const handler = (e: MouseEvent) => {
+      if (menuRef.current && !menuRef.current.contains(e.target as Node)) {
+        setShowSyncMenu(false);
+      }
+    };
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, [showSyncMenu]);
 
   return (
     <div className="flex flex-col h-full bg-bg-panel">
@@ -37,21 +52,39 @@ export function Sidebar() {
           <div className="flex items-center justify-between px-3 h-8 shrink-0">
             <span className="text-[10px] text-text-muted uppercase">Explorer</span>
             <div className="flex items-center gap-2">
-              <button
-                type="button"
-                onClick={sync}
-                disabled={isSyncing}
-                className="text-text-muted hover:text-text-primary transition-colors disabled:opacity-50"
-                title={
-                  error
-                    ? `Sync error: ${error}`
-                    : isSyncing && progress.total > 0
-                    ? `Syncing ${progress.processed}/${progress.total}`
-                    : 'Sync knowledge'
-                }
-              >
-                <VscSync size={14} className={isSyncing ? 'animate-spin' : ''} />
-              </button>
+              {/* Sync button with mode dropdown */}
+              <div className="relative" ref={menuRef}>
+                <button
+                  type="button"
+                  onClick={() => !isSyncing && setShowSyncMenu((v) => !v)}
+                  disabled={isSyncing}
+                  className="text-text-muted hover:text-text-primary transition-colors disabled:opacity-50"
+                  title={isSyncing ? `Syncing ${progress.processed}/${progress.total}` : 'Sync knowledge'}
+                >
+                  <VscSync size={14} className={isSyncing ? 'animate-spin' : ''} />
+                </button>
+                {showSyncMenu && (
+                  <div className="absolute right-0 top-full mt-1 z-50 bg-bg-panel border border-border-default rounded shadow-lg min-w-[190px]">
+                    <button
+                      type="button"
+                      onClick={() => { setShowSyncMenu(false); sync('incremental'); }}
+                      className="flex flex-col w-full px-3 py-2 text-left hover:bg-bg-hover transition-colors"
+                    >
+                      <span className="text-xs text-text-primary">Incremental Sync</span>
+                      <span className="text-[10px] text-text-muted">New &amp; changed files only</span>
+                    </button>
+                    <div className="border-t border-border-default" />
+                    <button
+                      type="button"
+                      onClick={() => { setShowSyncMenu(false); sync('complete'); }}
+                      className="flex flex-col w-full px-3 py-2 text-left hover:bg-bg-hover transition-colors"
+                    >
+                      <span className="text-xs text-text-primary">Complete Sync</span>
+                      <span className="text-[10px] text-text-muted">Re-index all files</span>
+                    </button>
+                  </div>
+                )}
+              </div>
               <button
                 type="button"
                 onClick={refresh}
@@ -62,6 +95,49 @@ export function Sidebar() {
               </button>
             </div>
           </div>
+
+          {/* Sync progress panel */}
+          {(isSyncing || error) && (
+            <div className="px-3 py-2 border-b border-border-default">
+              {isSyncing ? (
+                <>
+                  <div className="flex items-center justify-between mb-1">
+                    <span className="text-[10px] text-text-muted">Syncing knowledge…</span>
+                    <span className="text-[10px] text-text-muted font-medium">
+                      {progress.total > 0
+                        ? `${progress.processed} / ${progress.total} files${progress.skipped > 0 ? ` · ${progress.skipped} unchanged` : ''}`
+                        : 'Discovering files…'}
+                    </span>
+                  </div>
+                  <div className="h-1 bg-bg-secondary rounded overflow-hidden mb-1">
+                    {progress.total > 0 ? (
+                      <div
+                        className="h-full rounded bg-accent transition-all duration-500"
+                        style={{ width: `${Math.round((progress.processed / progress.total) * 100)}%` }}
+                      />
+                    ) : (
+                      <div className="h-full w-1/3 rounded bg-accent/50 animate-pulse" />
+                    )}
+                  </div>
+                  {progress.total > 0 && (
+                    <div className="flex items-center justify-between">
+                      <span className="text-[10px] text-text-muted truncate max-w-[160px]">
+                        {progress.currentFile
+                          ? (progress.currentFile.split(/[\\/]/).pop() || progress.currentFile)
+                          : ''}
+                      </span>
+                      <span className="text-[10px] text-text-muted shrink-0 ml-1">
+                        {Math.round((progress.processed / progress.total) * 100)}%
+                      </span>
+                    </div>
+                  )}
+                </>
+              ) : (
+                <span className="text-[10px] text-red-400">Sync error: {error}</span>
+              )}
+            </div>
+          )}
+
           <FileUpload />
           <div className="flex-1 overflow-y-auto px-1 py-1">
             <FileTree />

@@ -36,6 +36,11 @@ class Settings(BaseSettings):
     ENTRA_TENANT_ID: str = ""
     LOCAL_MODE: bool = False
 
+    # Pipeline features
+    RERANK_ENABLED: bool = True
+    SEMANTIC_CHUNKING: bool = True
+    TAVILY_API_KEY: str = ""
+
     # MCP
     MCP_MS_LEARN_ENABLED: bool = False
     MCP_MS_LEARN_ENDPOINT: str = ""

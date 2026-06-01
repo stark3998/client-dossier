@@ -41,7 +41,7 @@ class ConversationManager:
             return False
 
         messages = list(chat_history)
-        system_msgs = [m for m in messages if m.role.value == "system" if hasattr(m.role, 'value') else str(m.role) == "system"]
+        system_msgs = [m for m in messages if (m.role.value == "system" if hasattr(m.role, 'value') else str(m.role) == "system")]
         non_system = [m for m in messages if not (m.role.value == "system" if hasattr(m.role, 'value') else str(m.role) == "system")]
 
         if len(non_system) <= KEEP_RECENT:

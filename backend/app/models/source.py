@@ -34,10 +34,12 @@ class SourceDocument(BaseModel):
 class IngestJob(BaseModel):
     id: str = Field(default_factory=lambda: str(uuid.uuid4()))
     status: str = "pending"
+    mode: str = "incremental"
     path: str = ""
     client_name: str = ""
     total_files: int = 0
     processed_files: int = 0
+    skipped_files: int = 0
     current_file: Optional[str] = None
     error: Optional[str] = None
     started_at: datetime = Field(default_factory=datetime.utcnow)

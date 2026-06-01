@@ -44,6 +44,7 @@ class MCPManager:
             endpoint=config.endpoint,
             auth_type=config.auth_type,
             auth_config=config.auth_config,
+            protocol=getattr(config, "protocol", "rest"),
         )
 
         try:
@@ -99,6 +100,7 @@ class MCPManager:
             endpoint=config.endpoint,
             auth_type=config.auth_type,
             auth_config=config.auth_config,
+            protocol=getattr(config, "protocol", "rest"),
         )
         try:
             await plugin.connect()
