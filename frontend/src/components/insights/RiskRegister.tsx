@@ -18,8 +18,8 @@ export function RiskRegister() {
   return (
     <div className="min-h-screen bg-bg-primary">
       <header className="flex items-center gap-3 px-6 h-12 bg-bg-secondary border-b border-border-default">
-        <button type="button" onClick={() => navigate(`/clients/${clientName}`)} className="text-text-muted hover:text-text-primary">
-          <VscArrowLeft size={16} />
+        <button type="button" onClick={() => navigate(`/clients/${clientName}`)} aria-label="Back" className="text-text-muted hover:text-text-primary">
+          <VscArrowLeft size={16} aria-hidden="true" />
         </button>
         <h1 className="text-sm font-bold text-text-primary">Risk Register — {decodeURIComponent(clientName || '')}</h1>
       </header>

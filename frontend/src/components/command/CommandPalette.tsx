@@ -147,7 +147,7 @@ export function CommandPalette() {
         </div>
 
         {/* Results */}
-        <div ref={listRef} className="max-h-72 overflow-y-auto py-1" role="listbox">
+        <div ref={listRef} className="max-h-72 overflow-y-auto py-1" role="listbox" aria-label="Command results">
           {filtered.length === 0 && (
             <div className="px-4 py-6 text-sm text-text-muted text-center">
               No results for &ldquo;{query}&rdquo;
@@ -169,7 +169,7 @@ export function CommandPalette() {
                     type="button"
                     data-index={idx}
                     role="option"
-                    aria-selected={isSelected}
+                    aria-selected={isSelected ? 'true' : 'false'}
                     onClick={() => selectItem(item)}
                     onMouseEnter={() => setSelectedIndex(idx)}
                     className={`w-full flex items-center gap-3 px-4 py-2 text-left transition-colors ${

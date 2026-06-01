@@ -19,6 +19,7 @@ export function ActionItems({ items }: Props) {
               type="checkbox"
               checked={item.completed}
               readOnly
+              aria-label={item.description}
               className="mt-0.5 rounded border-border-default accent-accent"
             />
             <div className="min-w-0 flex-1">

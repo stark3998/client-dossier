@@ -63,9 +63,10 @@ export function ChatInput({ onSend, disabled }: Props) {
         <button
           onClick={handleSend}
           disabled={disabled || !input.trim()}
+          aria-label="Send message"
           className="p-2 rounded-md bg-accent text-bg-primary hover:bg-accent-bright transition-colors disabled:opacity-30 disabled:hover:bg-accent shrink-0"
         >
-          <VscSend size={18} />
+          <VscSend size={18} aria-hidden="true" />
         </button>
       </div>
     </div>
