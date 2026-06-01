@@ -1,369 +1,560 @@
-# Knowledge Pipeline: How the Client Intelligence Agent Learns and Remembers
+# Knowledge Pipeline: Data Architecture & Flow
 
-This document traces the complete lifecycle of information in the system — from a raw document on disk to a cited answer in the chat — covering ingestion, vectorisation, LLM analysis, memory consolidation, and how the agent uses all of it at query time.
-
----
-
-## Overview
-
-The system has three distinct but connected pipelines:
-
-```
-┌─────────────────────────────────────────────────────────────────┐
-│  1. EXTRACTION         2. MEMORY                 3. RETRIEVAL   │
-│                                                                  │
-│  Document             Structured facts           Agent answers  │
-│  on disk    ───────►  in Cosmos DB    ────────►  with citations │
-│             vectorise  + search index  inject                   │
-└─────────────────────────────────────────────────────────────────┘
-```
-
-Each pipeline feeds the next. A document contributes both a vector index entry (for semantic search) and a structured memory update (for fast, summarised context). At query time the agent draws on both.
+This document is the authoritative reference for how data moves through the system — from a file on disk to a cited answer in chat. It covers every storage layer, schema, partition strategy, and service interaction.
 
 ---
 
-## Part 1: Extraction — Document to Vector Index
+## System Overview
 
-### Trigger
+The platform uses **three Azure services** for persistent data and **one in-process embedding model** for vectorisation:
 
-Ingestion is kicked off in three ways:
-
-| Method | How |
+| Service | Role |
 |---|---|
-| **Sync button** | `POST /api/ingest` with `{client_name}` — scans entire client directory |
-| **File upload** | `POST /api/files/upload` — ingests the single uploaded file immediately |
-| **File watcher** | Background process watching `ONEDRIVE_SYNC_PATH`; triggers on create/modify with a 2-second debounce |
+| **Azure AI Search** | Full-text + vector search index — the RAG retrieval store |
+| **Azure Cosmos DB (NoSQL)** | All structured state — client memory, engagements, tracking |
+| **Azure OpenAI** | Embeddings (`text-embedding-3-large`) + LLM (`gpt-4o`) |
+| **FlashRank** | In-process cross-encoder re-ranking of search results |
 
-All three paths funnel into the same `run_ingestion()` function in `backend/app/ingestion/pipeline.py`.
-
-### Step 1 — Parse
-
-`parse_document(file_path)` in `backend/app/ingestion/parser.py` converts the raw file into a `ParsedDocument`:
+Data flows through two parallel pipelines triggered on every sync or upload, then converges at query time:
 
 ```
-ParsedDocument
-  ├── file_path
-  ├── file_type          (.docx, .pdf, .pptx, .xlsx, .msg, .eml, .txt, .md)
-  ├── last_modified
-  ├── metadata           {size_bytes, ...}
-  └── sections[]
-        ├── title        (heading, slide title, sheet name, page number)
-        └── text         (extracted body content)
+Document on disk
+      │
+      ├──► VECTOR PIPELINE ──────────────────► Azure AI Search (chunks + embeddings)
+      │                                        Cosmos doc_index (hash tracking)
+      │
+      └──► ANALYSIS PIPELINE ────────────────► Cosmos analyses (AnalysisResult per doc)
+                                               Cosmos memories (merged ClientMemory)
+
+Chat message
+      │
+      ├── Cosmos memories / risks / actions ─► Context injection (2000 tok budget)
+      ├── Azure AI Search ────────────────────► Hybrid search (BM25 + HNSW + rerank)
+      └── Cosmos all containers ──────────────► Tool calls (engagements, risks, etc.)
 ```
 
-Each file type has its own parser — Word extracts by heading level, PowerPoint one section per slide, Excel one section per worksheet, PDF one section per page, email uses From/Subject as the title.
+---
 
-### Step 2 — Deduplication check
+## Part 1: Azure AI Search
 
-Before doing any expensive work, the pipeline computes a **SHA-256 hash of the file content** and checks the `doc_index` container in Cosmos DB. If a record exists with a matching hash, the file is skipped entirely. This means re-running ingestion on an already-indexed client is fast — only new or changed files are processed.
+### Index: `client-knowledge`
 
-### Step 3 — Chunk
+Configured in `app/services/search.py`. One index shared across all clients; `client_name` is a filterable field used to scope every query.
 
-`chunk_document()` in `backend/app/ingestion/chunker.py` splits each section into overlapping windows:
+| Field | Type | Attributes | Notes |
+| --- | --- | --- | --- |
+| `id` | String | Key | SHA-256(`file_path:content`) |
+| `content` | String | Searchable | Full chunk text — BM25 searches this |
+| `content_vector` | Collection(Single) | Searchable, 3072-dim | HNSW vector index — semantic search |
+| `file_path` | String | Filterable | Full path to source file |
+| `file_type` | String | Filterable | `.docx`, `.pdf`, `.pptx`, etc. |
+| `section_title` | String | Searchable | Heading / slide title / sheet name |
+| `page_number` | Int32 | | 0-indexed; used in citations |
+| `client_name` | String | Filterable | **Per-client isolation at query time** |
+| `chunk_hash` | String | | SHA-256(content) — for dedup detection |
+| `last_modified` | DateTimeOffset | Sortable | From file system metadata |
 
-- **Max size**: 800 tokens (using tiktoken `cl100k_base`)
-- **Overlap**: 100 tokens between consecutive chunks
-- Each chunk carries the section title, page number, file path, and client name as metadata
-- Each chunk gets a **SHA-256 ID** derived from `file_path + content`
+### Vector Configuration
 
-The overlap ensures that information spanning a chunk boundary remains retrievable.
+- **Algorithm**: HNSW (`HnswAlgorithmConfiguration`, name `hnsw-config`)
+- **Profile**: `hnsw-profile`
+- **Dimensions**: 3072 (matches `text-embedding-3-large`)
+- **Semantic config**: `semantic-config` — prioritises `content` then `section_title` for re-ranking
 
-### Step 4 — Embed
+### Hybrid Search
 
-`embed_chunks()` calls `EmbeddingService.embed_texts()` in batches of 16 against the Azure OpenAI `text-embedding-3-large` deployment. This produces **3072-dimensional float vectors** per chunk.
+`SearchService.hybrid_search()` fires a single Azure AI Search request that combines:
 
-In `LOCAL_MODE`, a `LocalEmbeddingService` produces deterministic vectors seeded from the content hash so the system functions without Azure credits.
+1. **BM25 full-text** on `content` + `section_title`
+2. **HNSW vector search** on `content_vector` using the embedded query
+3. **Semantic re-ranking** — Azure's hosted semantic model rescores the merged list
+4. **Client filter** — `client_name eq '{client}'` applied to every query
+5. **FlashRank cross-encoder** — `ms-marco-MiniLM-L-12-v2` re-ranks the top results in-process (toggled by `RERANK_ENABLED`)
 
-### Step 5 — Index
+Returns top 8 chunks. Each result includes: `id`, `content`, `file_path`, `file_type`, `section_title`, `page_number`, `client_name`, `score`.
 
-The enriched chunks (content + metadata + embedding) are bulk-upserted to **Azure AI Search** via `SearchService.upsert_chunks()`. The index schema:
+---
 
-| Field | Type | Purpose |
-|---|---|---|
-| `id` | Key | SHA-256 chunk hash |
-| `content` | Searchable string | Chunk text for BM25 |
-| `content_vector` | 3072-dim float | HNSW vector for semantic search |
-| `file_path` | Filterable | Per-file scoping |
-| `client_name` | Filterable | **Per-client isolation** |
-| `section_title` | Searchable | Boosts relevance for titled sections |
-| `page_number` | Int | For citation display |
-| `last_modified` | DateTimeOffset | Sortable recency |
+## Part 2: Cosmos DB
 
-### Step 6 — Record
+### Account Structure
 
-A record is written to the `doc_index` Cosmos container marking the file as ingested:
+```
+Cosmos Account
+├── Database: "clientagent"          ← master / shared
+│     ├── Container: clients
+│     ├── Container: custom_tools
+│     └── Container: mcp_servers
+│
+├── Database: "client_{client_id}"   ← one per client
+│     ├── Container: memories
+│     ├── Container: doc_index
+│     ├── Container: analyses
+│     ├── Container: engagements
+│     ├── Container: interactions
+│     ├── Container: action_items
+│     ├── Container: risks
+│     ├── Container: deliverables
+│     ├── Container: status_updates
+│     └── Container: events
+│
+└── Database: "client_{client_id}"   ← (repeated for each client)
+```
+
+**Client ID format**: `client_name.lower().replace(" ", "-")` — e.g., `"Acme Corp"` → `client_acme-corp`.
+
+---
+
+### Master Database: `clientagent`
+
+#### `clients` — partition key `/id`
+
+One document per registered client. Queried by the frontend to populate the client selector.
+
+| Field | Type |
+|---|---|
+| `id` | string |
+| `name` | string |
+| `description` | string |
+| `created_at` | ISO timestamp |
+
+#### `custom_tools` — partition key `/id`
+
+User-defined tool definitions injectable into the agent's tool set.
+
+#### `mcp_servers` — partition key `/id`
+
+MCP server configurations (URL, enabled flag, headers) managed via the Settings panel.
+
+---
+
+### Per-Client Databases: `client_{client_id}`
+
+#### `memories` — partition key `/id`
+
+A **single document per client** — accumulated facts from every ingested document and every conversation. Fetched at the start of every chat session for context injection.
+
+```
+ClientMemory
+├── id                    string   — same as client_id
+├── client_name           string
+├── industry              string?
+├── key_stakeholders[]
+│     ├── name            string
+│     ├── title           string?
+│     └── email           string?
+├── active_engagements[]  string[]  — engagement names
+├── financials_summary    string?
+├── pain_points[]         string[]  — risk descriptions merged from documents
+├── strategic_priorities[] string[]
+├── past_deliverables[]
+│     ├── title           string
+│     ├── date            datetime?
+│     └── file_path       string?
+├── open_action_items[]
+│     ├── description     string
+│     ├── owner           string?
+│     ├── due_date        datetime?
+│     └── completed       bool
+├── last_updated          datetime
+└── sources[]             string[]  — every file_path that contributed
+```
+
+Dedup logic on merge: stakeholders by name (case-insensitive), action items by description (case-insensitive), pain points and engagements by exact match.
+
+#### `doc_index` — partition key `/file_path`
+
+One document per **indexed file**. Sole purpose: incremental sync deduplication.
 
 ```json
 {
-  "id": "<sha256>",
-  "file_path": "Acme Corp/Uploads/Q4-Review.pdf",
+  "id": "<sha256-of-file-content>",
+  "file_path": "Acme Corp/Q4-Review.pdf",
+  "file_type": ".pdf",
   "content_hash": "<sha256>",
   "chunk_count": 14,
   "last_indexed": "2026-05-31T09:00:00Z"
 }
 ```
 
----
+Before any expensive work, `_ingest_file()` reads this record. If `content_hash` matches the current file hash, the file is skipped entirely (incremental mode). In complete mode (`force=True`) the check is bypassed.
 
-## Part 2: Analysis — Document to Structured Facts
+#### `analyses` — partition key `/file_path`
 
-In parallel with vectorisation, every ingested document is also passed through an **LLM analysis step** that extracts structured facts and merges them into the client's memory.
+Full `AnalysisResult` per document, stored after LLM extraction. Used by the Analysis view in the frontend.
 
-### LLM Extraction
-
-`AnalysisService.analyze_document()` in `backend/app/services/analysis.py`:
-
-1. Concatenates all parsed sections (truncated to ~48K characters / ~12K tokens)
-2. Sends to Azure OpenAI with the system prompt from `backend/app/prompts/analysis_prompt.txt`
-3. Receives a structured JSON response:
-
-```json
-{
-  "doc_type": "meeting_notes",
-  "analysis_summary": "Q4 planning session covering ...",
-  "extracted_stakeholders": [
-    { "name": "Jane Smith", "title": "CFO", "email": "jsmith@acme.com", "confidence": 0.95 }
-  ],
-  "extracted_actions": [
-    { "description": "Send revised SOW by Friday", "owner": "Jane", "due_date": "2026-06-06", "priority": "high" }
-  ],
-  "extracted_risks": [
-    { "description": "Budget approval delayed", "severity": "high", "category": "commercial" }
-  ],
-  "extracted_dates": [
-    { "date": "2026-06-15", "description": "Milestone review", "date_type": "milestone" }
-  ],
-  "engagement_references": ["Project Orion"],
-  "key_topics": ["budget", "resourcing", "timeline"]
-}
+```
+AnalysisResult
+├── id                       string (uuid)
+├── file_path                string
+├── client_name              string
+├── doc_type                 string  — meeting_notes | contract | proposal | status_report
+│                                      email | presentation | spreadsheet | memo | other
+├── analysis_summary         string
+├── extracted_stakeholders[]
+│     ├── name               string
+│     ├── title              string?
+│     ├── email              string?
+│     ├── organization       string?
+│     └── confidence         float   — 0.5–1.0
+├── extracted_actions[]
+│     ├── description        string
+│     ├── owner              string?
+│     ├── due_date           string?
+│     └── priority           string?
+├── extracted_risks[]
+│     ├── description        string
+│     ├── severity           string?
+│     └── category           string?  — technical | commercial | operational | timeline
+├── extracted_dates[]
+│     ├── date               string
+│     ├── description        string
+│     └── date_type          string  — milestone | meeting | deadline
+├── engagement_references[]  string[]
+├── key_topics[]             string[]
+└── analyzed_at              datetime
 ```
 
-The prompt instructs the model to:
-- Classify `doc_type` from: `meeting_notes`, `contract`, `proposal`, `status_report`, `email`, `presentation`, `spreadsheet`, `memo`, `other`
-- Find stakeholders in signatures, attendee lists, and org chart references; assign a confidence score 0.5–1.0
-- Identify action items from TODO/Next Steps patterns; extract owner and due date if present
-- Detect risks from language like "risk", "concern", "issue", "blocker"; categorise as technical/commercial/operational/timeline
-- Extract explicit dates and classify them as milestone/meeting/deadline
+LLM call: `gpt-4o`, `temperature=0.1`, `max_tokens=4096`, `response_format=json_object`. Input truncated to ~48,000 characters (~12K tokens).
 
-The full `AnalysisResult` is stored in the client's `analyses` Cosmos container (partitioned by `file_path`) so it can be reviewed later in the Analysis view of the frontend.
+#### `engagements` — partition key `/id`
 
-### Memory Merge
+```
+Engagement
+├── id               string (uuid)
+├── name             string
+├── client_name      string
+├── phase            discovery | design | execute | deliver | sustain
+├── status           active | completed | on-hold | cancelled
+├── description      string
+├── start_date       string?
+├── end_date         string?
+├── budget           float?
+├── team[]           string[]
+├── created_at       datetime
+└── updated_at       datetime
+```
 
-`merge_analysis_into_memory()` in `backend/app/services/analysis.py` takes the `AnalysisResult` and merges it into the live `ClientMemory` object in Cosmos:
+#### `interactions` — partition key `/id`
 
-| Extracted field | Merges into ClientMemory field | Dedup logic |
+Meeting notes, calls, and emails logged against a client.
+
+```
+Interaction
+├── id               string (uuid)
+├── type             meeting | call | email | workshop
+├── date             string
+├── participants[]   string[]
+├── summary          string
+├── action_items[]   string[]
+├── source_file      string?   — file_path if auto-extracted
+├── engagement_id    string?
+└── created_at       datetime
+```
+
+#### `action_items` — partition key `/engagement_id`
+
+```
+ActionItem
+├── id               string (uuid)
+├── description      string
+├── owner            string?
+├── due_date         string?
+├── completed        bool
+└── engagement_id    string
+```
+
+#### `risks` — partition key `/engagement_id`
+
+Risk score = `probability × impact` (both 1–5 integers). Used to compute client health score and surface overdue/high-severity items in context injection.
+
+```
+Risk
+├── id               string (uuid)
+├── description      string
+├── probability      int    1–5
+├── impact           int    1–5
+├── mitigation       string
+├── status           open | mitigating | resolved | accepted
+├── engagement_id    string
+├── owner            string
+├── category         technical | commercial | operational | timeline
+├── created_at       datetime
+└── updated_at       datetime
+```
+
+#### `deliverables` — partition key `/engagement_id`
+
+```
+Deliverable
+├── id               string (uuid)
+├── title            string
+├── type             document | presentation | report | code | other
+├── engagement_id    string
+├── status           draft | review | delivered | accepted
+├── due_date         string?
+├── owner            string
+├── feedback         string?
+├── file_path        string?
+├── created_at       datetime
+└── updated_at       datetime
+```
+
+#### `status_updates` — partition key `/engagement_id`
+
+```
+StatusUpdate
+├── id               string (uuid)
+├── engagement_id    string
+├── date             string
+├── author           string
+├── summary          string
+├── sentiment        positive | neutral | negative | concerning
+├── source_file      string?
+└── created_at       datetime
+```
+
+#### `events` — partition key `/event_type`
+
+System events and timeline entries (file uploads, sync runs, agent actions).
+
+---
+
+## Part 3: Ingestion Pipeline
+
+### Supported File Types
+
+```python
+SUPPORTED_EXTENSIONS = {".docx", ".pptx", ".xlsx", ".pdf", ".msg", ".eml", ".txt", ".md"}
+```
+
+| Extension | Parser | Section Boundary |
 |---|---|---|
-| `extracted_stakeholders` | `key_stakeholders` | Match by name (case-insensitive), skip if exists |
-| `extracted_actions` | `open_action_items` | Match by description, skip if exists |
-| `engagement_references` | `active_engagements` | Set union |
-| `extracted_risks[].description` | `pain_points` | Set union |
-| `file_path` | `sources` | Append |
-| *(always)* | `last_updated` | Overwrite with UTC now |
+| `.docx` | python-docx | Word heading styles |
+| `.pptx` | python-pptx | One section per slide |
+| `.xlsx` | openpyxl | One section per worksheet |
+| `.pdf` | pdfplumber / fitz | One section per page |
+| `.msg` | extract-msg | From / Subject / Body |
+| `.eml` | email stdlib | From / Subject / Body |
+| `.txt` / `.md` | stdlib | Single section |
 
-The `ClientMemory` object in the `memories` Cosmos container accumulates facts from every document ever ingested for that client:
+### Chunking
+
+`chunk_document()` in `app/ingestion/chunker.py`:
+
+- **Tokeniser**: `cl100k_base` (tiktoken)
+- **Max chunk size**: 800 tokens
+- **Overlap**: 100 tokens between consecutive chunks (ensures boundary content stays retrievable)
+- **Sentence boundary splitting**: `(?<=[.!?])\s+` — never splits mid-sentence
+- **Semantic chunking** (optional, `SEMANTIC_CHUNKING=True`): uses chonkie `SemanticChunker` at similarity threshold 0.5
+
+**Chunk identity**:
 
 ```
-ClientMemory
-  ├── client_name
-  ├── industry
-  ├── key_stakeholders[]      ← accumulated from all docs
-  ├── active_engagements[]    ← accumulated from all docs
-  ├── financials_summary
-  ├── pain_points[]           ← risk descriptions from all docs
-  ├── strategic_priorities[]
-  ├── past_deliverables[]
-  ├── open_action_items[]     ← accumulated from all docs
-  ├── last_updated
-  └── sources[]               ← every file that contributed
+chunk_hash = SHA-256(content)
+chunk.id   = SHA-256(file_path + ":" + content)
+```
+
+### Embedding
+
+`embed_chunks()` in `app/ingestion/embedder.py` calls `EmbeddingService.embed_texts()`:
+
+- **Model**: `text-embedding-3-large` (Azure OpenAI deployment `AZURE_OPENAI_EMBEDDING_DEPLOYMENT`)
+- **Vector dimensions**: 3072
+- **Batch size**: 16 chunks per API call
+- **Local mode**: `LocalEmbeddingService` — deterministic 3072-dim vectors seeded from content hash, no API calls
+
+### Pipeline Steps (per file)
+
+```
+_ingest_file(file_path, client_name, force)
+│
+├─ 1. SHA-256 hash the file bytes
+├─ 2. Query doc_index (Cosmos) for matching content_hash
+│     └─ If match found AND force=False → return {indexed: False}  [SKIP]
+│
+├─ 3. parse_document() → ParsedDocument with sections[]
+├─ 4. chunk_document() → Chunk[] (800 tok, 100 tok overlap)
+├─ 5. embed_chunks()   → Chunk[].embedding = float[3072]
+│
+├─ 6. upsert_chunks() → Azure AI Search
+│     └─ Bulk upsert: id, content, content_vector, file_path, file_type,
+│                      section_title, page_number, client_name, chunk_hash, last_modified
+│
+├─ 7. doc_index upsert → Cosmos
+│     └─ {id: content_hash, file_path, file_type, content_hash, chunk_count, last_indexed}
+│
+└─ return {indexed: True, chunks: N, duration_ms: T}
+```
+
+The analysis pipeline runs **in parallel** (separate call from `run_ingestion()`):
+
+```
+analyze_document(parsed, client_name)
+│
+├─ Concatenate sections → truncate to ~48K chars
+├─ gpt-4o call (temp=0.1, max_tokens=4096) → AnalysisResult JSON
+├─ Store AnalysisResult → Cosmos analyses container
+│
+└─ merge_analysis_into_memory(result, memory_repo)
+      ├─ Fetch existing ClientMemory from Cosmos memories
+      ├─ Merge stakeholders (dedup by name)
+      ├─ Merge action_items (dedup by description)
+      ├─ Union engagement_references → active_engagements
+      ├─ Union risk descriptions → pain_points
+      ├─ Append file_path → sources
+      └─ Upsert updated ClientMemory back to Cosmos memories
+```
+
+### Job State (`IngestJob` — in-memory only)
+
+Jobs are held in a process-level dict `_jobs` in `app/api/ingest.py` and do not persist to Cosmos. Polling via `GET /api/ingest/{job_id}` reads directly from this dict.
+
+```
+IngestJob
+├── id                  string (uuid)
+├── status              pending | running | done | error
+├── mode                incremental | complete
+├── path                string
+├── client_name         string
+├── total_files         int
+├── processed_files     int
+├── current_file_index  int   — 1-based, updated per file
+├── skipped_files       int   — unchanged files (incremental mode)
+├── current_file        string?
+├── file_events[]             — last 20 completed files
+│     ├── file_name     string
+│     ├── status        done | error
+│     ├── chunks        int?
+│     ├── duration_ms   int?
+│     └── error         string?  (error events only)
+├── error               string?
+├── started_at          datetime
+└── completed_at        datetime?
 ```
 
 ---
 
-## Part 3: Retrieval — How the Agent Uses Knowledge
+## Part 4: Query-Time Data Flow
 
-When a user sends a message, `AgentPlanner.stream_response()` in `backend/app/agent/planner.py` orchestrates the following before the model even sees the user's words.
+### 1. Context Injection
 
-### Pre-query: Context Injection
+`ContextInjector.build_context_block(client_name)` fetches four things **in parallel** from Cosmos before any LLM call:
 
-`ContextInjector.build_context_block(client_name)` in `backend/app/agent/context_injector.py` fetches four things in parallel from Cosmos and assembles them into a structured block (capped at 2000 tokens):
+| Query | Container | Filter |
+|---|---|---|
+| Client memory | `memories` | `GET memories/{client_id}` |
+| Recent interactions | `interactions` | Last 5, ordered by `date DESC` |
+| Active risks | `risks` | `status = 'open'`, top 10 by `probability × impact` |
+| Overdue actions | `action_items` | `status = 'open'` AND `due_date < today` |
 
-```
-=== CLIENT CONTEXT: Acme Corp ===
-Industry: Technology
-Priorities: Digital transformation, cost reduction, ...
-Pain points: Budget approval delayed, ...
+Assembles a structured text block capped at **2000 tokens**, injected as a system message at the top of the conversation history. The model always has the most relevant client facts before seeing the user's message.
 
-RECENT INTERACTIONS (3):
-- [meeting] 2026-05-28: Discussed Q4 roadmap and resourcing...
+### 2. Conversation Compaction
 
-ACTIVE RISKS (2):
-- [Sev:8] Budget approval delayed in commercial track
-- [Sev:6] Key resource leaving in July
+`ConversationManager.maybe_summarize()` checks total token count of chat history (using `cl100k_base` or `len // 4` approximation):
 
-OVERDUE ACTION ITEMS (1):
-- Send revised SOW (due: 2026-06-06, owner: Jane)
-===
-```
+- **Threshold**: 8000 tokens
+- **Minimum kept verbatim**: last 6 messages
+- **Summarisation**: `gpt-4o` call with `summarize_conversation_prompt.txt` (temp=0.2, max_tokens=1024)
+- **Fallback**: joins last 10 messages truncated to 200 chars each
+- **Result**: `[system: CLIENT CONTEXT] + [system: CONVERSATION_SUMMARY] + [last 6 messages]`
 
-This block is injected as a system message at the top of the conversation history. The model always has the most relevant client facts without needing to call a tool first.
+### 3. Query Routing
 
-### Pre-query: Conversation Compaction
-
-`ConversationManager.maybe_summarize()` in `backend/app/agent/conversation_manager.py` checks the total token count of the chat history. If it exceeds **8000 tokens**:
-
-1. The oldest messages (everything except the last 6) are summarised by the LLM using `summarize_conversation_prompt.txt`
-2. The summary preserves: decisions made, facts learned, action items raised, unresolved questions
-3. The compressed history becomes: `[system: CLIENT CONTEXT] + [system: CONVERSATION_SUMMARY ...] + [last 6 messages]`
-
-This prevents context window exhaustion on long sessions while keeping recent turns verbatim.
-
-### Routing: Simple vs Complex
-
-`is_complex_query()` checks for signals like "compare", "across all", "for each", "summarize all", query length > 150 characters. 
+`is_complex_query()` checks for terms like "compare", "across all", "for each", "summarize all", or query length > 150 characters:
 
 - **Simple** → `run_react_loop()` directly
-- **Complex** → `plan_and_execute()` first generates a JSON step plan, then runs each step through `run_react_loop()`
+- **Complex** → `plan_and_execute()` generates a JSON step plan, then runs each step through `run_react_loop()`
 
-### The ReAct Loop
+### 4. ReAct Tool Loop (up to 10 iterations)
 
-`run_react_loop()` in `backend/app/agent/react_loop.py` runs up to 10 iterations:
+The model receives the full context + history and emits tool calls until it has enough information to answer.
 
-```
-┌──────────────────────────────────────────────────┐
-│  LLM sees: system context + chat history          │
-│  LLM outputs: text + optional tool call(s)        │
-└────────────────────┬─────────────────────────────┘
-                     │ tool call requested?
-          ┌──────────┴──────────┐
-         Yes                    No
-          │                     │
-          ▼                     ▼
-   Execute tool(s)         Stream final
-   Add results to          answer to user
-   history                 (done)
-   Loop again
-```
+#### Knowledge retrieval tools
 
-The model decides which tools to call. The full tool set available:
+| Tool | Reads from | Notes |
+| --- | --- | --- |
+| `search_documents(query, client_name)` | Azure AI Search | Hybrid BM25 + HNSW + rerank, returns top 8 chunks |
+| `search_with_rewriting(query, client_name)` | Azure AI Search | Generates 2-3 query variants, deduplicates results |
+| `list_files(client_name)` | File system | Directory tree |
+| `read_file_preview(path)` | File system | Up to 5000 characters |
 
-**Knowledge retrieval**
-- `search_documents(query, client_name)` — hybrid search (BM25 + vector) against the indexed chunks
-- `search_with_rewriting(query, client_name)` — generates 2-3 query variants via `query_rewrite_prompt.txt`, runs each, deduplicates results
-- `list_files(client_name)` — browse the file tree
-- `read_file_preview(path)` — read up to 5000 chars of a specific file
+#### Memory tools
 
-**Memory access**
-- `recall_client_memory(client_name)` — fetches the live `ClientMemory` object
-- `update_client_memory(client_name, field_name, value)` — writes back to Cosmos
-- `get_client_health(client_name)` — returns the computed health score
+| Tool | Reads/writes | Container |
+| --- | --- | --- |
+| `recall_client_memory(client_name)` | Read | `memories` |
+| `update_client_memory(client_name, field, value)` | Write | `memories` |
+| `get_client_health(client_name)` | Read | `memories`, `risks`, `action_items` |
 
-**Engagement & risk management**
-- `recall_engagements`, `create_engagement`, `update_engagement_phase`
-- `recall_risks`, `create_risk`
-- `recall_deliverables`, `create_deliverable`
-- `create_interaction`, `create_action_item`
+#### Engagement & risk tools
 
-**Document generation**
-- `generate_presentation`, `generate_document`, `draft_status_report`, `generate_meeting_summary`
+| Tool | Container |
+| --- | --- |
+| `recall_engagements` / `create_engagement` / `update_engagement_phase` | `engagements` |
+| `recall_risks` / `create_risk` | `risks` |
+| `recall_deliverables` / `create_deliverable` | `deliverables` |
+| `create_interaction` | `interactions` |
+| `create_action_item` | `action_items` |
 
-### Hybrid Search in Detail
+#### Document generation tools
 
-When `search_documents()` is called, `SearchService.hybrid_search()` fires a single request to Azure AI Search that combines:
+`generate_presentation`, `generate_document`, `draft_status_report`, `generate_meeting_summary` — write output files to the client directory and may create `deliverables` or `interactions` records.
 
-1. **BM25 full-text search** on `content` and `section_title` — handles exact keyword matches
-2. **HNSW vector search** on `content_vector` — handles semantic similarity
-3. **Semantic re-ranking** — Azure AI Search re-scores results using its semantic model, prioritising `content` then `section_title`
-4. **Client filter** — `client_name eq 'Acme Corp'` scopes results to this client only
+### 5. Search Result to Citation
 
-Returns the top 8 chunks with scores. The agent formats them and the ReAct loop emits a `StreamEvent(type="source")` for each unique source file — these become the citation chips displayed under the response in the UI.
-
-### Memory Updates During Conversation
-
-The agent's system prompt instructs it to **proactively update memory** whenever it learns something new. When the model calls `update_client_memory()`, it writes directly back to the Cosmos `memories` container, so future conversations (and future context injections) will include the updated fact. The model effectively maintains memory continuity across sessions.
+When `search_documents()` returns chunks, each unique `file_path` in the results becomes a `StreamEvent(type="source")` emitted to the frontend. These appear as citation chips below the agent's response, linking back to the source document.
 
 ---
 
-## Cosmos DB Schema Summary
+## Part 5: Environment & Configuration
 
-Each client gets its own Cosmos database (`client_{id}`) with these containers:
+All Azure service coordinates come from environment variables (sourced from Key Vault in production, `.env` in local mode):
 
-| Container | Partition Key | What's stored |
-|---|---|---|
-| `memories` | `/id` | Single ClientMemory object per client |
-| `doc_index` | `/file_path` | Ingestion tracking (hash, chunk count, timestamp) |
-| `analyses` | `/file_path` | Full AnalysisResult per document |
-| `engagements` | `/id` | Engagement records with phase, status |
-| `interactions` | `/id` | Meeting notes, calls, emails logged |
-| `action_items` | `/engagement_id` | Open/closed action items |
-| `risks` | `/engagement_id` | Risk register entries |
-| `deliverables` | `/engagement_id` | Deliverable tracking |
-| `status_updates` | `/engagement_id` | Status report history |
-| `events` | `/event_type` | System events and timeline entries |
-
----
-
-## Data Flow — Complete End-to-End
-
-```
-FILE ON DISK
-    │
-    ▼
-parse_document()              → ParsedDocument (sections + metadata)
-    │
-    ├──► chunk_document()     → Chunk[] (800 tok, 100 tok overlap)
-    │         │
-    │         ▼
-    │    embed_chunks()       → Chunk[] + 3072-dim vectors
-    │         │
-    │         ▼
-    │    upsert_chunks()      → Azure AI Search index (BM25 + HNSW)
-    │    doc_index upsert     → Cosmos (hash tracking)
-    │
-    └──► analyze_document()   → AnalysisResult (LLM extraction)
-              │
-              ▼
-         merge_analysis_into_memory()
-              │
-              ▼
-         ClientMemory in Cosmos (stakeholders, actions, risks, priorities)
-
-
-CHAT MESSAGE
-    │
-    ▼
-maybe_summarize()             → compact history if > 8000 tokens
-    │
-    ▼
-build_context_block()         → inject memory + risks + overdue items
-    │
-    ▼
-is_complex_query()?
-    ├── Yes → plan_and_execute()  → JSON step plan → loop each step
-    └── No  → run_react_loop()
-                   │
-                   ▼
-              LLM + tools (up to 10 iterations)
-                   │
-                   ├── search_documents()
-                   │       └── embed query → hybrid_search() → top 8 chunks + sources
-                   ├── recall_client_memory()
-                   │       └── fetch ClientMemory from Cosmos
-                   ├── update_client_memory()
-                   │       └── write new facts back to Cosmos
-                   └── (other tools: engagements, risks, docs, ...)
-                   │
-                   ▼
-              Stream to frontend: tokens + source chips + tool events
-```
+| Variable | Purpose |
+| --- | --- |
+| `AZURE_OPENAI_ENDPOINT` | Azure OpenAI base URL |
+| `AZURE_OPENAI_API_KEY` | Azure OpenAI key |
+| `AZURE_OPENAI_DEPLOYMENT` | Chat model (`gpt-4o`) |
+| `AZURE_OPENAI_EMBEDDING_DEPLOYMENT` | Embedding model (`text-embedding-3-large`) |
+| `AZURE_OPENAI_API_VERSION` | API version (`2024-08-01-preview`) |
+| `AZURE_SEARCH_ENDPOINT` | Azure AI Search endpoint |
+| `AZURE_SEARCH_API_KEY` | Azure AI Search key |
+| `AZURE_SEARCH_INDEX_NAME` | Index name (default: `client-knowledge`) |
+| `COSMOS_ENDPOINT` | Cosmos DB account URL |
+| `COSMOS_KEY` | Cosmos DB key |
+| `COSMOS_DB_NAME` | Master database name (default: `clientagent`) |
+| `ONEDRIVE_SYNC_PATH` | Root path for file discovery |
+| `RERANK_ENABLED` | Enable FlashRank cross-encoder reranking |
+| `SEMANTIC_CHUNKING` | Enable chonkie semantic chunker |
+| `LOCAL_MODE` | Skip auth + use local stub services |
+| `TAVILY_API_KEY` | Web search tool (optional) |
+| `ALERT_RISK_THRESHOLD` | Risk score threshold for alerts (default: 15) |
+| `ALERT_STALE_DAYS` | Days before client is flagged stale (default: 14) |
 
 ---
 
-## Building Further on the Knowledge Base
+## Quick Reference
 
-The memory compounds over time in two ways:
-
-**Passive accumulation** — every new document synced via OneDrive or uploaded through the UI runs through both the vector pipeline and the LLM analysis pipeline. Stakeholders, risks, and action items accumulate in `ClientMemory` without manual input.
-
-**Active enrichment by the agent** — during conversations the agent is instructed to call `update_client_memory()` whenever it infers something new (e.g., the user mentions a new stakeholder or the user confirms a risk has been resolved). This means the memory is live and reflects the conversation as well as the documents.
-
-**Cross-session continuity** — `ConversationManager` compacts old chat history into a summary that travels forward into new sessions. Combined with the persistent `ClientMemory` and the context injection at every query, the agent maintains a coherent picture of the client across weeks of conversations and hundreds of documents.
+| Parameter | Value |
+| --- | --- |
+| Search index name | `client-knowledge` |
+| Vector model | `text-embedding-3-large` |
+| Vector dimensions | 3072 |
+| Embedding batch size | 16 texts / API call |
+| Chunk max size | 800 tokens |
+| Chunk overlap | 100 tokens |
+| Token encoder | `cl100k_base` (tiktoken) |
+| Chat model | `gpt-4o` |
+| Search top-k | 8 chunks |
+| Context injection budget | 2000 tokens |
+| Conversation compaction threshold | 8000 tokens |
+| Messages kept verbatim | last 6 |
+| ReAct max iterations | 10 |
+| Analysis max input | ~48,000 chars (~12K tokens) |
+| Master Cosmos DB | `clientagent` |
+| Per-client DB prefix | `client_{id}` |
+| Per-client containers | 10 |
+| Job state persistence | In-memory only (process-level dict) |
+| Reranker | FlashRank `ms-marco-MiniLM-L-12-v2` |

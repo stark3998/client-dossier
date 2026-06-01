@@ -21,8 +21,7 @@ interface SyncProgress {
   processed: number;
   total: number;
   skipped: number;
-  fileIndex: number;
-  currentFile: string;
+  activeFiles: string[];
   mode: SyncMode;
   fileEvents: FileEvent[];
 }
@@ -38,11 +37,11 @@ export function useSync() {
   const { refresh } = useFileTree();
   const [isSyncing, setIsSyncing] = useState(false);
   const [progress, setProgress] = useState<SyncProgress>({
-    processed: 0, total: 0, skipped: 0, fileIndex: 0, currentFile: '', mode: 'incremental', fileEvents: [],
+    processed: 0, total: 0, skipped: 0, activeFiles: [], mode: 'incremental', fileEvents: [],
   });
   const [error, setError] = useState<string | null>(null);
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
-  const prevFileRef = useRef<string | null>(null);
+  const prevActiveRef = useRef<Set<string>>(new Set());
 
   const stopPolling = useCallback((withError?: string) => {
     if (pollRef.current !== null) {
@@ -51,7 +50,7 @@ export function useSync() {
     }
     localStorage.removeItem(SYNC_JOB_KEY);
     localStorage.removeItem(SYNC_MODE_KEY);
-    prevFileRef.current = null;
+    prevActiveRef.current = new Set();
     setIsSyncing(false);
     if (withError !== undefined) setError(withError);
   }, []);
@@ -94,21 +93,24 @@ export function useSync() {
         if (!poll.ok) return;
 
         const job = await poll.json();
-        const currentFile: string = job.current_file ?? '';
+        const activeFiles: string[] = job.active_files ?? [];
 
-        // Update per-file status dots in real time
-        if (currentFile !== prevFileRef.current) {
-          if (prevFileRef.current) setIngestionStatus(prevFileRef.current, 'done');
-          if (currentFile) setIngestionStatus(currentFile, 'indexing');
-          prevFileRef.current = currentFile;
+        // Update per-file status dots: mark newly active as indexing, removed as done
+        const prev = prevActiveRef.current;
+        const next = new Set(activeFiles);
+        for (const f of prev) {
+          if (!next.has(f)) setIngestionStatus(f, 'done');
         }
+        for (const f of next) {
+          if (!prev.has(f)) setIngestionStatus(f, 'indexing');
+        }
+        prevActiveRef.current = next;
 
         setProgress({
           processed: job.processed_files ?? 0,
           total: job.total_files ?? 0,
           skipped: job.skipped_files ?? 0,
-          fileIndex: job.current_file_index ?? 0,
-          currentFile,
+          activeFiles,
           mode,
           fileEvents: job.file_events ?? [],
         });
@@ -142,7 +144,7 @@ export function useSync() {
     if (!activeClient || isSyncing) return;
     setIsSyncing(true);
     setError(null);
-    setProgress({ processed: 0, total: 0, skipped: 0, fileIndex: 0, currentFile: '', mode, fileEvents: [] });
+    setProgress({ processed: 0, total: 0, skipped: 0, activeFiles: [], mode, fileEvents: [] });
 
     try {
       const res = await fetch('/api/ingest', {

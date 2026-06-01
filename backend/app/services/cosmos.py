@@ -51,6 +51,7 @@ class CosmosClientManager:
         self._clients_container = None
         self._custom_tools_container = None
         self._mcp_servers_container = None
+        self._ingest_jobs_container = None
         self._client_dbs: dict[str, Any] = {}
 
     async def initialize(self):
@@ -74,6 +75,10 @@ class CosmosClientManager:
             id="mcp_servers",
             partition_key=PartitionKey(path="/id"),
         )
+        self._ingest_jobs_container = await self._master_db.create_container_if_not_exists(
+            id="ingest_jobs",
+            partition_key=PartitionKey(path="/id"),
+        )
         logger.info("Cosmos master DB initialized: %s", settings.COSMOS_DB_NAME)
 
     def get_master_repo(self) -> CosmosRepository:
@@ -91,6 +96,12 @@ class CosmosClientManager:
         if self._mcp_servers_container is None:
             return None
         return CosmosRepository(self._mcp_servers_container)
+
+    def get_ingest_jobs_repo(self) -> CosmosRepository | None:
+        """Repository for ingestion job state in the master database."""
+        if self._ingest_jobs_container is None:
+            return None
+        return CosmosRepository(self._ingest_jobs_container)
 
     async def ensure_client_database(self, client_id: str) -> None:
         """Create a per-client database with standard containers if it doesn't exist."""
@@ -197,12 +208,14 @@ class LocalCosmosClientManager:
         self._master_repo = LocalCosmosRepository("master_clients")
         self._custom_tools_repo = LocalCosmosRepository("master_custom_tools")
         self._mcp_servers_repo = LocalCosmosRepository("master_mcp_servers")
+        self._ingest_jobs_repo = LocalCosmosRepository("master_ingest_jobs")
         self._client_repos: dict[str, dict[str, LocalCosmosRepository]] = {}
 
     async def initialize(self):
         await self._master_repo.initialize()
         await self._custom_tools_repo.initialize()
         await self._mcp_servers_repo.initialize()
+        await self._ingest_jobs_repo.initialize()
 
     def get_master_repo(self) -> LocalCosmosRepository:
         return self._master_repo
@@ -214,6 +227,10 @@ class LocalCosmosClientManager:
     def get_mcp_servers_repo(self) -> LocalCosmosRepository:
         """Repository for MCP server configs in the local master database."""
         return self._mcp_servers_repo
+
+    def get_ingest_jobs_repo(self) -> LocalCosmosRepository:
+        """Repository for ingestion job state in the local master database."""
+        return self._ingest_jobs_repo
 
     async def ensure_client_database(self, client_id: str) -> None:
         if client_id not in self._client_repos:

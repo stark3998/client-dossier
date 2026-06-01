@@ -146,6 +146,12 @@ async def get_client_analysis_repo(client_name: str):
     return await _cosmos_manager.get_client_repo(client_id, "analyses")
 
 
+def get_job_repo():
+    if _cosmos_manager is None:
+        return None
+    return _cosmos_manager.get_ingest_jobs_repo()
+
+
 def get_search_service():
     return _search_service
 

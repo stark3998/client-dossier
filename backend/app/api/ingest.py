@@ -41,10 +41,16 @@ async def trigger_ingestion(request: IngestRequest, background_tasks: Background
     _jobs[job.id] = job
 
     try:
-        from app.dependencies import get_client_doc_index_repo, get_search_service, get_embedding_service
+        from app.dependencies import (
+            get_client_doc_index_repo,
+            get_search_service,
+            get_embedding_service,
+            get_job_repo,
+        )
         doc_index_repo = await get_client_doc_index_repo(request.client_name)
         search_service = get_search_service()
         embedding_service = get_embedding_service()
+        job_repo = get_job_repo()
 
         from app.ingestion.pipeline import run_ingestion
         background_tasks.add_task(
@@ -53,6 +59,7 @@ async def trigger_ingestion(request: IngestRequest, background_tasks: Background
             doc_index_repo=doc_index_repo,
             search_service=search_service,
             embedding_service=embedding_service,
+            job_repo=job_repo,
             force=(request.mode == "complete"),
         )
     except Exception as e:
@@ -72,8 +79,7 @@ async def get_job_status(job_id: str):
         "status": job.status,
         "mode": job.mode,
         "progress": job.progress,
-        "current_file": job.current_file,
-        "current_file_index": job.current_file_index,
+        "active_files": [f.split("/")[-1].split("\\")[-1] for f in job.active_files],
         "total_files": job.total_files,
         "processed_files": job.processed_files,
         "skipped_files": job.skipped_files,

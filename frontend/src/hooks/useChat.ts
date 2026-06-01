@@ -5,6 +5,8 @@ import type { WSMessage, ChatMessage } from '@/types';
 
 export function useChat() {
   const wsRef = useRef<WebSocket | null>(null);
+  const destroyedRef = useRef(false);
+  const reconnectTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const {
     messages, isStreaming, streamBuffer,
     addMessage, appendToken, addStreamSource,
@@ -13,7 +15,9 @@ export function useChat() {
   } = useClientStore();
 
   const connect = useCallback(() => {
-    if (wsRef.current?.readyState === WebSocket.OPEN) return;
+    if (destroyedRef.current) return;
+    const state = wsRef.current?.readyState;
+    if (state === WebSocket.OPEN || state === WebSocket.CONNECTING) return;
 
     const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
     const host = window.location.host;
@@ -48,7 +52,9 @@ export function useChat() {
     };
 
     ws.onclose = () => {
-      setTimeout(connect, 3000);
+      if (!destroyedRef.current) {
+        reconnectTimerRef.current = setTimeout(connect, 3000);
+      }
     };
 
     ws.onerror = () => {
@@ -57,8 +63,14 @@ export function useChat() {
   }, [appendToken, addStreamSource, finalizeStream, addReasoningStep]);
 
   useEffect(() => {
+    destroyedRef.current = false;
     connect();
     return () => {
+      destroyedRef.current = true;
+      if (reconnectTimerRef.current !== null) {
+        clearTimeout(reconnectTimerRef.current);
+        reconnectTimerRef.current = null;
+      }
       wsRef.current?.close();
     };
   }, [connect]);

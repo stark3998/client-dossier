@@ -39,9 +39,8 @@ class IngestJob(BaseModel):
     client_name: str = ""
     total_files: int = 0
     processed_files: int = 0
-    current_file_index: int = 0
     skipped_files: int = 0
-    current_file: Optional[str] = None
+    active_files: list[str] = Field(default_factory=list)
     file_events: list[dict] = Field(default_factory=list)
     error: Optional[str] = None
     started_at: datetime = Field(default_factory=datetime.utcnow)

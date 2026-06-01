@@ -39,6 +39,7 @@ class Settings(BaseSettings):
     # Pipeline features
     RERANK_ENABLED: bool = True
     SEMANTIC_CHUNKING: bool = True
+    INGEST_CONCURRENCY: int = 5
     TAVILY_API_KEY: str = ""
 
     # MCP

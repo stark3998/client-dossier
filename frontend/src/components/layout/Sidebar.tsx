@@ -126,12 +126,12 @@ export function Sidebar() {
             <div className="px-3 py-2 border-b border-border-default">
               {isSyncing ? (
                 <>
-                  {/* Header row: label + file counter */}
+                  {/* Header row: done count + percentage */}
                   <div className="flex items-center justify-between mb-1">
                     <span className="text-[10px] text-text-muted">Syncing knowledge…</span>
                     <span className="text-[10px] text-text-muted font-medium">
                       {progress.total > 0
-                        ? `File ${progress.fileIndex} / ${progress.total}${progress.skipped > 0 ? ` · ${progress.skipped} unchanged` : ''}`
+                        ? `${progress.processed} / ${progress.total}${progress.skipped > 0 ? ` · ${progress.skipped} unchanged` : ''}`
                         : 'Discovering files…'}
                     </span>
                   </div>
@@ -141,24 +141,27 @@ export function Sidebar() {
                     {progress.total > 0 ? (
                       <div
                         className="h-full rounded bg-accent transition-all duration-500"
-                        style={{ width: `${Math.round((progress.fileIndex / progress.total) * 100)}%` }}
+                        style={{ width: `${Math.round((progress.processed / progress.total) * 100)}%` }}
                       />
                     ) : (
                       <div className="h-full w-1/3 rounded bg-accent/50 animate-pulse" />
                     )}
                   </div>
 
-                  {/* Current file + percentage */}
-                  {progress.total > 0 && (
-                    <div className="flex items-center justify-between mb-1">
-                      <span className="text-[10px] text-text-muted truncate max-w-[160px]">
-                        {progress.currentFile
-                          ? (progress.currentFile.split(/[\\/]/).pop() || progress.currentFile)
-                          : ''}
-                      </span>
-                      <span className="text-[10px] text-text-muted shrink-0 ml-1">
-                        {Math.round((progress.fileIndex / progress.total) * 100)}%
-                      </span>
+                  {/* In-progress files list */}
+                  {progress.activeFiles.length > 0 && (
+                    <div className="mb-1 space-y-0.5">
+                      {progress.activeFiles.slice(0, 4).map((name) => (
+                        <div key={name} className="flex items-center gap-1 text-[10px] leading-tight">
+                          <VscSync size={9} className="text-accent shrink-0 animate-spin" />
+                          <span className="text-text-muted truncate">{name}</span>
+                        </div>
+                      ))}
+                      {progress.activeFiles.length > 4 && (
+                        <span className="text-[10px] text-text-muted/60">
+                          +{progress.activeFiles.length - 4} more…
+                        </span>
+                      )}
                     </div>
                   )}
 
