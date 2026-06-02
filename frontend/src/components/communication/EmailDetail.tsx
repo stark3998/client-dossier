@@ -1,7 +1,8 @@
 // frontend/src/components/communication/EmailDetail.tsx
 import { useEffect, useState } from 'react';
 import { VscArrowLeft, VscEdit } from 'react-icons/vsc';
-import { fetchEmail, triggerScan } from '../../hooks/useCommunication';
+import { useFetchEmail } from '../../hooks/useCommunication';
+import { useApiFetch } from '@/hooks/useApiFetch';
 import type { ScannedEmail } from '../../types';
 
 interface Props {
@@ -16,6 +17,8 @@ export function EmailDetail({ emailId, clientName, onBack, onDraftCreated }: Pro
   const [loading, setLoading] = useState(true);
   const [drafting, setDrafting] = useState(false);
   const [draftDone, setDraftDone] = useState(false);
+  const fetchEmail = useFetchEmail();
+  const { apiFetch } = useApiFetch();
 
   useEffect(() => {
     setLoading(true);
@@ -23,12 +26,12 @@ export function EmailDetail({ emailId, clientName, onBack, onDraftCreated }: Pro
       .then(setEmail)
       .catch(console.error)
       .finally(() => setLoading(false));
-  }, [clientName, emailId]);
+  }, [clientName, emailId, fetchEmail]);
 
   async function handleGenerateDraft() {
     setDrafting(true);
     try {
-      await fetch(
+      await apiFetch(
         `/api/communication/${encodeURIComponent(clientName)}/drafts`,
         {
           method: 'POST',

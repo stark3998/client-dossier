@@ -1,18 +1,20 @@
 // src/hooks/useAnalysis.ts
 import { useState, useEffect, useCallback } from 'react';
 import { useClientStore } from '@/stores/clientStore';
+import { useApiFetch } from '@/hooks/useApiFetch';
 import type { AnalysisResult } from '@/types';
 
 export function useAnalysis() {
   const { activeClient } = useClientStore();
   const [results, setResults] = useState<AnalysisResult[]>([]);
   const [loading, setLoading] = useState(false);
+  const { apiFetch } = useApiFetch();
 
   const fetchResults = useCallback(async () => {
     if (!activeClient) return;
     setLoading(true);
     try {
-      const res = await fetch(`/api/analysis/${encodeURIComponent(activeClient)}`);
+      const res = await apiFetch(`/api/analysis/${encodeURIComponent(activeClient)}`);
       if (res.ok) {
         const data = await res.json();
         setResults(data.results || []);
@@ -22,7 +24,7 @@ export function useAnalysis() {
     } finally {
       setLoading(false);
     }
-  }, [activeClient]);
+  }, [activeClient, apiFetch]);
 
   useEffect(() => { fetchResults(); }, [fetchResults]);
 

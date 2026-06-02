@@ -1,7 +1,7 @@
 // frontend/src/components/communication/MeetingLogList.tsx
 import { useState } from 'react';
 import { VscCalendar, VscChevronDown, VscChevronRight, VscLoading } from 'react-icons/vsc';
-import { fetchTranscript } from '../../hooks/useCommunication';
+import { useFetchTranscript } from '../../hooks/useCommunication';
 import type { MeetingLog } from '../../types';
 
 interface Props {
@@ -20,6 +20,7 @@ const responseColor: Record<string, string> = {
 export function MeetingLogList({ meetings, loading, onReload }: Props) {
   const [expanded, setExpanded] = useState<string | null>(null);
   const [fetchingTranscript, setFetchingTranscript] = useState<string | null>(null);
+  const fetchTranscript = useFetchTranscript();
 
   async function handleFetchTranscript(clientName: string, meetingId: string) {
     setFetchingTranscript(meetingId);

@@ -1,6 +1,7 @@
 // frontend/src/hooks/useNotifications.ts
 import { useRef, useCallback, useEffect } from 'react';
 import { useClientStore } from '@/stores/clientStore';
+import { useApiFetch } from '@/hooks/useApiFetch';
 import { showToast } from '@/components/common/Toast';
 import type { ClientEvent, Notification } from '@/types';
 
@@ -36,13 +37,12 @@ export function useNotifications() {
   const wsRef = useRef<WebSocket | null>(null);
   const reconnectTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const { addNotification } = useClientStore();
+  const { getAuthenticatedWsUrl } = useApiFetch();
 
-  const connect = useCallback(() => {
+  const connect = useCallback(async () => {
     if (wsRef.current?.readyState === WebSocket.OPEN) return;
 
-    const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-    const host = window.location.host;
-    const url = `${protocol}//${host}/ws/notifications`;
+    const url = await getAuthenticatedWsUrl('/ws/notifications');
 
     const ws = new WebSocket(url);
     wsRef.current = ws;
@@ -66,16 +66,16 @@ export function useNotifications() {
     };
 
     ws.onclose = () => {
-      reconnectTimerRef.current = setTimeout(connect, 3000);
+      reconnectTimerRef.current = setTimeout(() => { connect().catch(console.error); }, 3000);
     };
 
     ws.onerror = () => {
       ws.close();
     };
-  }, [addNotification]);
+  }, [addNotification, getAuthenticatedWsUrl]);
 
   useEffect(() => {
-    connect();
+    connect().catch(console.error);
     return () => {
       if (reconnectTimerRef.current) {
         clearTimeout(reconnectTimerRef.current);

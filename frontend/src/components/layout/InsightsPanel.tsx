@@ -10,7 +10,7 @@ import { InsightsSummary } from '@/components/insights/InsightsSummary';
 import { StakeholderList } from '@/components/insights/StakeholderList';
 import { ActionItems } from '@/components/insights/ActionItems';
 import { VscArrowRight } from 'react-icons/vsc';
-import { fetchCommSummary } from '@/hooks/useCommunication';
+import { useCommSummary } from '@/hooks/useCommunication';
 import type { CommSummary } from '@/types';
 
 export function InsightsPanel() {
@@ -21,11 +21,12 @@ export function InsightsPanel() {
   const { results: analyses } = useAnalysis();
   const { events } = useTimeline();
   const [commSummary, setCommSummary] = useState<CommSummary | null>(null);
+  const fetchCommSummary = useCommSummary();
 
   useEffect(() => {
     if (!activeClient) return;
     fetchCommSummary(activeClient).then(setCommSummary).catch(() => {});
-  }, [activeClient]);
+  }, [activeClient, fetchCommSummary]);
 
   const clientPath = activeClient ? `/clients/${encodeURIComponent(activeClient)}` : '';
 

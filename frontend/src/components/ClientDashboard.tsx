@@ -2,9 +2,14 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { VscAdd, VscFolder, VscArrowRight } from 'react-icons/vsc';
+import { useApiFetch } from '@/hooks/useApiFetch';
+import { useAuth } from '@/auth/AuthProvider';
 
 export function ClientDashboard() {
   const navigate = useNavigate();
+  const { apiFetch } = useApiFetch();
+  const { user } = useAuth();
+  const initials = user?.name?.split(' ').map(p => p[0]).slice(0, 2).join('').toUpperCase() ?? '?';
   const [clients, setClients] = useState<string[]>([]);
   const [loading, setLoading] = useState(true);
   const [showNewClient, setShowNewClient] = useState(false);
@@ -13,12 +18,13 @@ export function ClientDashboard() {
 
   useEffect(() => {
     fetchClients();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const fetchClients = async () => {
     setLoading(true);
     try {
-      const res = await fetch('/api/clients');
+      const res = await apiFetch('/api/clients');
       if (res.ok) {
         const data = await res.json();
         setClients(data.clients || []);
@@ -34,7 +40,7 @@ export function ClientDashboard() {
     if (!newClientName.trim() || creating) return;
     setCreating(true);
     try {
-      const res = await fetch('/api/clients', {
+      const res = await apiFetch('/api/clients', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ client_name: newClientName.trim() }),
@@ -52,9 +58,20 @@ export function ClientDashboard() {
   return (
     <div className="min-h-screen bg-bg-primary">
       <header className="border-b border-border-default bg-bg-secondary">
-        <div className="max-w-5xl mx-auto px-6 py-4">
-          <h1 className="text-lg font-bold text-accent tracking-wide">CLIENT INTELLIGENCE AGENT</h1>
-          <p className="text-sm text-text-secondary mt-1">Select a client to explore documents and insights</p>
+        <div className="max-w-5xl mx-auto px-6 py-4 flex items-start justify-between">
+          <div>
+            <h1 className="text-lg font-bold text-accent tracking-wide">CLIENT INTELLIGENCE AGENT</h1>
+            <p className="text-sm text-text-secondary mt-1">Select a client to explore documents and insights</p>
+          </div>
+          <button
+            type="button"
+            onClick={() => navigate('/profile')}
+            title="View profile"
+            aria-label="View profile"
+            className="w-8 h-8 rounded-full bg-accent/20 text-accent text-sm font-bold flex items-center justify-center hover:bg-accent/30 transition-colors mt-1 flex-shrink-0"
+          >
+            {initials}
+          </button>
         </div>
       </header>
 

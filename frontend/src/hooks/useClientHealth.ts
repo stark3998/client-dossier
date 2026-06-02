@@ -1,6 +1,7 @@
 // frontend/src/hooks/useClientHealth.ts
 import { useState, useEffect, useCallback } from 'react';
 import { useClientStore } from '@/stores/clientStore';
+import { useApiFetch } from '@/hooks/useApiFetch';
 import type { ClientHealthReport } from '@/types';
 
 const BASE_URL = import.meta.env.VITE_BACKEND_URL ?? '';
@@ -14,6 +15,7 @@ export function useClientHealth(clientName: string | null) {
   const [health, setHealth] = useState<ClientHealthReport | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const { apiFetch } = useApiFetch();
 
   const fetchHealth = useCallback(async () => {
     if (!clientName) {
@@ -26,7 +28,7 @@ export function useClientHealth(clientName: string | null) {
     setError(null);
 
     try {
-      const res = await fetch(
+      const res = await apiFetch(
         `${BASE_URL}/api/clients/${encodeURIComponent(clientName)}/health`,
       );
       if (!res.ok) {
@@ -42,7 +44,7 @@ export function useClientHealth(clientName: string | null) {
     } finally {
       setLoading(false);
     }
-  }, [clientName, setClientHealthScore]);
+  }, [clientName, setClientHealthScore, apiFetch]);
 
   useEffect(() => {
     fetchHealth();

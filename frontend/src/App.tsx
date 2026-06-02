@@ -7,6 +7,7 @@ import { RiskRegister } from '@/components/insights/RiskRegister';
 import { InteractionTimeline } from '@/components/insights/InteractionTimeline';
 import { AnalysisResults } from '@/components/insights/AnalysisResults';
 import { CommunicationView } from '@/components/communication/CommunicationView';
+import { ProfilePage } from '@/components/profile/ProfilePage';
 
 export default function App() {
   return (
@@ -19,6 +20,7 @@ export default function App() {
         <Route path="/clients/:clientName/timeline" element={<InteractionTimeline />} />
         <Route path="/clients/:clientName/analysis" element={<AnalysisResults />} />
         <Route path="/clients/:clientName/communications" element={<CommunicationView />} />
+        <Route path="/profile" element={<ProfilePage />} />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
     </BrowserRouter>

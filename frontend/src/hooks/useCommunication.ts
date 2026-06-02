@@ -1,5 +1,6 @@
 // frontend/src/hooks/useCommunication.ts
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { useApiFetch } from '@/hooks/useApiFetch';
 import type {
   CommSummary,
   CommunicationConfig,
@@ -16,13 +17,19 @@ function apiUrl(path: string) {
   return `${API}${path}`;
 }
 
-async function fetchJSON<T>(url: string, options?: RequestInit): Promise<T> {
-  const res = await fetch(url, options);
-  if (!res.ok) {
-    const text = await res.text().catch(() => res.statusText);
-    throw new Error(text || `HTTP ${res.status}`);
-  }
-  return res.json() as Promise<T>;
+// -- Internal authenticated fetch helper --------------------------------------
+
+function useCommunicationFetch() {
+  const { apiFetch } = useApiFetch();
+  const fetchJSON = useCallback(async <T>(url: string, options?: RequestInit): Promise<T> => {
+    const res = await apiFetch(url, options ?? {});
+    if (!res.ok) {
+      const text = await res.text().catch(() => res.statusText);
+      throw new Error(text || `HTTP ${res.status}`);
+    }
+    return res.json() as Promise<T>;
+  }, [apiFetch]);
+  return { fetchJSON };
 }
 
 // -- Emails -------------------------------------------------------------------
@@ -31,6 +38,7 @@ export function useEmails(clientName: string, days = 7) {
   const [emails, setEmails] = useState<ScannedEmail[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const { fetchJSON } = useCommunicationFetch();
 
   const load = useCallback(
     async (search?: string, folder?: string) => {
@@ -51,7 +59,7 @@ export function useEmails(clientName: string, days = 7) {
         setLoading(false);
       }
     },
-    [clientName, days]
+    [clientName, days, fetchJSON]
   );
 
   useEffect(() => { load(); }, [load]);
@@ -59,9 +67,14 @@ export function useEmails(clientName: string, days = 7) {
   return { emails, loading, error, reload: load };
 }
 
-export async function fetchEmail(clientName: string, emailId: string): Promise<ScannedEmail> {
-  return fetchJSON<ScannedEmail>(
-    apiUrl(`/api/communication/${encodeURIComponent(clientName)}/emails/${emailId}`)
+export function useFetchEmail() {
+  const { fetchJSON } = useCommunicationFetch();
+  return useCallback(
+    (clientName: string, emailId: string): Promise<ScannedEmail> =>
+      fetchJSON<ScannedEmail>(
+        apiUrl(`/api/communication/${encodeURIComponent(clientName)}/emails/${emailId}`)
+      ),
+    [fetchJSON],
   );
 }
 
@@ -71,6 +84,7 @@ export function useMeetings(clientName: string, days = 30) {
   const [meetings, setMeetings] = useState<MeetingLog[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const { fetchJSON } = useCommunicationFetch();
 
   const load = useCallback(async () => {
     if (!clientName) return;
@@ -86,17 +100,22 @@ export function useMeetings(clientName: string, days = 30) {
     } finally {
       setLoading(false);
     }
-  }, [clientName, days]);
+  }, [clientName, days, fetchJSON]);
 
   useEffect(() => { load(); }, [load]);
 
   return { meetings, loading, error, reload: load };
 }
 
-export async function fetchTranscript(clientName: string, meetingId: string): Promise<void> {
-  await fetchJSON(
-    apiUrl(`/api/communication/${encodeURIComponent(clientName)}/meetings/${meetingId}/fetch-transcript`),
-    { method: 'POST' }
+export function useFetchTranscript() {
+  const { fetchJSON } = useCommunicationFetch();
+  return useCallback(
+    (clientName: string, meetingId: string): Promise<void> =>
+      fetchJSON(
+        apiUrl(`/api/communication/${encodeURIComponent(clientName)}/meetings/${meetingId}/fetch-transcript`),
+        { method: 'POST' }
+      ),
+    [fetchJSON],
   );
 }
 
@@ -106,6 +125,7 @@ export function useDrafts(clientName: string, status?: string) {
   const [drafts, setDrafts] = useState<DraftReply[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const { fetchJSON } = useCommunicationFetch();
 
   const load = useCallback(async () => {
     if (!clientName) return;
@@ -122,7 +142,7 @@ export function useDrafts(clientName: string, status?: string) {
     } finally {
       setLoading(false);
     }
-  }, [clientName, status]);
+  }, [clientName, status, fetchJSON]);
 
   useEffect(() => { load(); }, [load]);
 
@@ -134,7 +154,7 @@ export function useDrafts(clientName: string, status?: string) {
       );
       await load();
     },
-    [clientName, load]
+    [clientName, load, fetchJSON]
   );
 
   const approveDraft = useCallback(
@@ -145,7 +165,7 @@ export function useDrafts(clientName: string, status?: string) {
       );
       await load();
     },
-    [clientName, load]
+    [clientName, load, fetchJSON]
   );
 
   const submitFeedback = useCallback(
@@ -155,7 +175,7 @@ export function useDrafts(clientName: string, status?: string) {
         { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ feedback }) }
       );
     },
-    [clientName]
+    [clientName, fetchJSON]
   );
 
   const discardDraft = useCallback(
@@ -166,7 +186,7 @@ export function useDrafts(clientName: string, status?: string) {
       );
       await load();
     },
-    [clientName, load]
+    [clientName, load, fetchJSON]
   );
 
   return { drafts, loading, error, reload: load, updateDraft, approveDraft, submitFeedback, discardDraft };
@@ -178,6 +198,7 @@ export function useCommConfig(clientName: string) {
   const [config, setConfig] = useState<CommunicationConfig | null>(null);
   const [accounts, setAccounts] = useState<string[]>([]);
   const [loading, setLoading] = useState(false);
+  const { fetchJSON } = useCommunicationFetch();
 
   const load = useCallback(async () => {
     if (!clientName) return;
@@ -196,7 +217,7 @@ export function useCommConfig(clientName: string) {
     } finally {
       setLoading(false);
     }
-  }, [clientName]);
+  }, [clientName, fetchJSON]);
 
   useEffect(() => { load(); }, [load]);
 
@@ -208,7 +229,7 @@ export function useCommConfig(clientName: string) {
       );
       setConfig(saved);
     },
-    [clientName]
+    [clientName, fetchJSON]
   );
 
   const fetchFolders = useCallback(
@@ -220,7 +241,7 @@ export function useCommConfig(clientName: string) {
       );
       return data.folders;
     },
-    [clientName]
+    [clientName, fetchJSON]
   );
 
   return { config, accounts, loading, reload: load, saveConfig, fetchFolders };
@@ -228,14 +249,48 @@ export function useCommConfig(clientName: string) {
 
 // -- Scan trigger -------------------------------------------------------------
 
-export async function triggerScan(clientName: string): Promise<void> {
-  await fetchJSON(
-    apiUrl(`/api/communication/${encodeURIComponent(clientName)}/scan`),
-    { method: 'POST' }
+export function useTriggerScan() {
+  const { fetchJSON } = useCommunicationFetch();
+  return useCallback(
+    (clientName: string): Promise<void> =>
+      fetchJSON(
+        apiUrl(`/api/communication/${encodeURIComponent(clientName)}/scan`),
+        { method: 'POST' }
+      ),
+    [fetchJSON],
   );
 }
 
 // -- Summary ------------------------------------------------------------------
+
+export function useCommSummary() {
+  const { fetchJSON } = useCommunicationFetch();
+  return useCallback(
+    async (clientName: string): Promise<CommSummary> => {
+      try {
+        const [emailsData, meetingsData, draftsData] = await Promise.all([
+          fetchJSON<{ emails: unknown[]; count: number }>(
+            apiUrl(`/api/communication/${encodeURIComponent(clientName)}/emails?days=7`)
+          ),
+          fetchJSON<{ meetings: unknown[]; count: number }>(
+            apiUrl(`/api/communication/${encodeURIComponent(clientName)}/meetings?upcoming_only=true`)
+          ),
+          fetchJSON<{ drafts: unknown[]; count: number }>(
+            apiUrl(`/api/communication/${encodeURIComponent(clientName)}/drafts?status=pending_review`)
+          ),
+        ]);
+        return {
+          emails_last_7d: emailsData.count,
+          upcoming_meetings: meetingsData.count,
+          pending_drafts: draftsData.count,
+        };
+      } catch {
+        return { emails_last_7d: 0, upcoming_meetings: 0, pending_drafts: 0 };
+      }
+    },
+    [fetchJSON],
+  );
+}
 
 // -- Threads ------------------------------------------------------------------
 
@@ -243,6 +298,7 @@ export function useThreads(clientName: string, days = 14) {
   const [threads, setThreads] = useState<EmailThread[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const { fetchJSON } = useCommunicationFetch();
 
   const load = useCallback(
     async (search?: string) => {
@@ -262,7 +318,7 @@ export function useThreads(clientName: string, days = 14) {
         setLoading(false);
       }
     },
-    [clientName, days]
+    [clientName, days, fetchJSON]
   );
 
   useEffect(() => { load(); }, [load]);
@@ -273,6 +329,7 @@ export function useThread(clientName: string, threadKey: string | null) {
   const [emails, setEmails] = useState<ScannedEmail[]>([]);
   const [subject, setSubject] = useState('');
   const [loading, setLoading] = useState(false);
+  const { fetchJSON } = useCommunicationFetch();
 
   useEffect(() => {
     if (!clientName || !threadKey) { setEmails([]); return; }
@@ -283,7 +340,7 @@ export function useThread(clientName: string, threadKey: string | null) {
       .then((d) => { setEmails(d.emails); setSubject(d.subject); })
       .catch(console.error)
       .finally(() => setLoading(false));
-  }, [clientName, threadKey]);
+  }, [clientName, threadKey, fetchJSON]);
 
   return { emails, subject, loading };
 }
@@ -294,6 +351,7 @@ export function useThreadInsight(clientName: string, threadKey: string | null) {
   const [isStreaming, setIsStreaming] = useState(false);
   const [cached, setCached] = useState(false);
   const wsRef = useRef<WebSocket | null>(null);
+  const { getAuthenticatedWsUrl } = useApiFetch();
 
   // Reset when thread changes
   useEffect(() => {
@@ -304,7 +362,7 @@ export function useThreadInsight(clientName: string, threadKey: string | null) {
     wsRef.current = null;
   }, [threadKey]);
 
-  const analyze = useCallback(() => {
+  const analyze = useCallback(async () => {
     if (!clientName || !threadKey || isStreaming) return;
     wsRef.current?.close();
 
@@ -312,9 +370,9 @@ export function useThreadInsight(clientName: string, threadKey: string | null) {
     setSources([]);
     setIsStreaming(true);
 
-    const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-    const host = window.location.host;
-    const url = `${protocol}//${host}/ws/communication/${encodeURIComponent(clientName)}/threads/${encodeURIComponent(threadKey)}/insight`;
+    const url = await getAuthenticatedWsUrl(
+      `/ws/communication/${encodeURIComponent(clientName)}/threads/${encodeURIComponent(threadKey)}/insight`
+    );
 
     const ws = new WebSocket(url);
     wsRef.current = ws;
@@ -341,32 +399,7 @@ export function useThreadInsight(clientName: string, threadKey: string | null) {
 
     ws.onerror = () => setIsStreaming(false);
     ws.onclose = () => setIsStreaming(false);
-  }, [clientName, threadKey, isStreaming]);
+  }, [clientName, threadKey, isStreaming, getAuthenticatedWsUrl]);
 
   return { content, sources, isStreaming, cached, analyze };
-}
-
-export async function fetchCommSummary(clientName: string): Promise<CommSummary> {
-  // Uses the agent plugin endpoint indirectly via a dedicated summary query
-  // Falling back to deriving from list endpoints if needed
-  try {
-    const [emailsData, meetingsData, draftsData] = await Promise.all([
-      fetchJSON<{ emails: unknown[]; count: number }>(
-        apiUrl(`/api/communication/${encodeURIComponent(clientName)}/emails?days=7`)
-      ),
-      fetchJSON<{ meetings: unknown[]; count: number }>(
-        apiUrl(`/api/communication/${encodeURIComponent(clientName)}/meetings?upcoming_only=true`)
-      ),
-      fetchJSON<{ drafts: unknown[]; count: number }>(
-        apiUrl(`/api/communication/${encodeURIComponent(clientName)}/drafts?status=pending_review`)
-      ),
-    ]);
-    return {
-      emails_last_7d: emailsData.count,
-      upcoming_meetings: meetingsData.count,
-      pending_drafts: draftsData.count,
-    };
-  } catch {
-    return { emails_last_7d: 0, upcoming_meetings: 0, pending_drafts: 0 };
-  }
 }

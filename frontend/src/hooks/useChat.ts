@@ -1,6 +1,7 @@
 // frontend/src/hooks/useChat.ts
 import { useRef, useCallback, useEffect } from 'react';
 import { useClientStore } from '@/stores/clientStore';
+import { useApiFetch } from '@/hooks/useApiFetch';
 import type { WSMessage, ChatMessage } from '@/types';
 
 export function useChat() {
@@ -13,15 +14,14 @@ export function useChat() {
     startStream, finalizeStream, activeClient,
     addReasoningStep,
   } = useClientStore();
+  const { getAuthenticatedWsUrl } = useApiFetch();
 
-  const connect = useCallback(() => {
+  const connect = useCallback(async () => {
     if (destroyedRef.current) return;
     const state = wsRef.current?.readyState;
     if (state === WebSocket.OPEN || state === WebSocket.CONNECTING) return;
 
-    const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-    const host = window.location.host;
-    const url = `${protocol}//${host}/ws/chat`;
+    const url = await getAuthenticatedWsUrl('/ws/chat');
 
     const ws = new WebSocket(url);
     wsRef.current = ws;
@@ -53,18 +53,18 @@ export function useChat() {
 
     ws.onclose = () => {
       if (!destroyedRef.current) {
-        reconnectTimerRef.current = setTimeout(connect, 3000);
+        reconnectTimerRef.current = setTimeout(() => { connect().catch(console.error); }, 3000);
       }
     };
 
     ws.onerror = () => {
       ws.close();
     };
-  }, [appendToken, addStreamSource, finalizeStream, addReasoningStep]);
+  }, [appendToken, addStreamSource, finalizeStream, addReasoningStep, getAuthenticatedWsUrl]);
 
   useEffect(() => {
     destroyedRef.current = false;
-    connect();
+    connect().catch(console.error);
     return () => {
       destroyedRef.current = true;
       if (reconnectTimerRef.current !== null) {

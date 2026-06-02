@@ -1,9 +1,11 @@
 // src/hooks/useFileUpload.ts
 import { useCallback } from 'react';
 import { useClientStore } from '@/stores/clientStore';
+import { useApiFetch } from '@/hooks/useApiFetch';
 
 export function useFileUpload() {
   const { activeClient, setUpload, clearUpload } = useClientStore();
+  const { apiFetch } = useApiFetch();
 
   const uploadFile = useCallback(async (file: File) => {
     if (!activeClient) return;
@@ -21,7 +23,8 @@ export function useFileUpload() {
     formData.append('client_name', activeClient);
 
     try {
-      const res = await fetch('/api/files/upload', {
+      // No Content-Type header — browser sets multipart/form-data boundary automatically
+      const res = await apiFetch('/api/files/upload', {
         method: 'POST',
         body: formData,
       });
@@ -43,7 +46,7 @@ export function useFileUpload() {
     } catch (err) {
       setUpload(fileId, { fileId, fileName: file.name, percent: 0, status: 'error', error: String(err) });
     }
-  }, [activeClient, setUpload, clearUpload]);
+  }, [activeClient, setUpload, clearUpload, apiFetch]);
 
   return { uploadFile };
 }

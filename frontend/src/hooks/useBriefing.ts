@@ -1,5 +1,6 @@
 // frontend/src/hooks/useBriefing.ts
 import { useState, useEffect, useCallback } from 'react';
+import { useApiFetch } from '@/hooks/useApiFetch';
 import type { BriefingData } from '@/types';
 
 const BASE_URL = import.meta.env.VITE_BACKEND_URL ?? '';
@@ -17,6 +18,7 @@ function getLastVisitKey(clientName: string): string {
 export function useBriefing(clientName: string | null) {
   const [briefing, setBriefing] = useState<BriefingData | null>(null);
   const [loading, setLoading] = useState(false);
+  const { apiFetch } = useApiFetch();
 
   useEffect(() => {
     if (!clientName) {
@@ -33,7 +35,7 @@ export function useBriefing(clientName: string | null) {
       params.set('since', lastVisit);
     }
 
-    fetch(`${BASE_URL}/api/clients/${encodeURIComponent(clientName)}/briefing?${params.toString()}`)
+    apiFetch(`${BASE_URL}/api/clients/${encodeURIComponent(clientName)}/briefing?${params.toString()}`)
       .then((res) => {
         if (!res.ok) throw new Error(`Briefing fetch failed (${res.status})`);
         return res.json();
@@ -55,7 +57,7 @@ export function useBriefing(clientName: string | null) {
       .finally(() => {
         setLoading(false);
       });
-  }, [clientName]);
+  }, [clientName, apiFetch]);
 
   const dismiss = useCallback(() => {
     setBriefing(null);

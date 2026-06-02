@@ -2,7 +2,7 @@
 import { useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { VscArrowLeft, VscRefresh } from 'react-icons/vsc';
-import { useThreads, useThread, useMeetings, triggerScan } from '../../hooks/useCommunication';
+import { useThreads, useThread, useMeetings, useTriggerScan } from '../../hooks/useCommunication';
 import { ThreadList } from './ThreadList';
 import { ThreadDetail } from './ThreadDetail';
 import { ThreadInsightsPanel } from './ThreadInsightsPanel';
@@ -26,6 +26,7 @@ export function CommunicationView() {
   const { threads, loading: threadsLoading, reload: reloadThreads } = useThreads(decodedName);
   const { emails, subject, loading: threadLoading } = useThread(decodedName, selectedThread?.thread_key ?? null);
   const { meetings, loading: meetingsLoading, reload: reloadMeetings } = useMeetings(decodedName);
+  const triggerScan = useTriggerScan();
 
   function handleTabChange(t: Tab) {
     setActiveTab(t);

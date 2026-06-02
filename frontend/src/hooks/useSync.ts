@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useClientStore } from '@/stores/clientStore';
 import { useFileTree } from '@/hooks/useFileTree';
+import { useApiFetch } from '@/hooks/useApiFetch';
 import type { FileNode } from '@/types';
 
 const SYNC_JOB_KEY = 'sync_active_job_id';
@@ -35,6 +36,7 @@ function collectFilePaths(node: FileNode | null): string[] {
 export function useSync() {
   const { activeClient, setLastIndexed, fileTree, setIngestionStatus, setAllIngestionStatuses } = useClientStore();
   const { refresh } = useFileTree();
+  const { apiFetch } = useApiFetch();
   const [isSyncing, setIsSyncing] = useState(false);
   const [progress, setProgress] = useState<SyncProgress>({
     processed: 0, total: 0, skipped: 0, activeFiles: [], mode: 'incremental', fileEvents: [],
@@ -57,7 +59,7 @@ export function useSync() {
 
   const fetchIndexedFiles = useCallback(async (client: string) => {
     try {
-      const res = await fetch(`/api/ingest/indexed-files?client_name=${encodeURIComponent(client)}`);
+      const res = await apiFetch(`/api/ingest/indexed-files?client_name=${encodeURIComponent(client)}`);
       if (!res.ok) return;
       const { files } = await res.json() as { files: { file_path: string }[] };
 
@@ -72,7 +74,7 @@ export function useSync() {
     } catch {
       // silently ignore — status dots are best-effort
     }
-  }, [fileTree, setAllIngestionStatuses]);
+  }, [fileTree, setAllIngestionStatuses, apiFetch]);
 
   // Refresh indexed status whenever client or file tree changes
   useEffect(() => {
@@ -85,7 +87,7 @@ export function useSync() {
     if (pollRef.current) clearInterval(pollRef.current);
     pollRef.current = setInterval(async () => {
       try {
-        const poll = await fetch(`/api/ingest/${jobId}`);
+        const poll = await apiFetch(`/api/ingest/${jobId}`);
         if (poll.status === 404) {
           stopPolling();
           return;
@@ -127,7 +129,7 @@ export function useSync() {
         stopPolling('Polling failed');
       }
     }, 2000);
-  }, [stopPolling, setLastIndexed, refresh, activeClient, fetchIndexedFiles, setIngestionStatus]);
+  }, [stopPolling, setLastIndexed, refresh, activeClient, fetchIndexedFiles, setIngestionStatus, apiFetch]);
 
   // Resume any in-progress sync after page reload
   useEffect(() => {
@@ -147,7 +149,7 @@ export function useSync() {
     setProgress({ processed: 0, total: 0, skipped: 0, activeFiles: [], mode, fileEvents: [] });
 
     try {
-      const res = await fetch('/api/ingest', {
+      const res = await apiFetch('/api/ingest', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ client_name: activeClient, mode }),
@@ -163,7 +165,7 @@ export function useSync() {
       setIsSyncing(false);
       setError(err instanceof Error ? err.message : 'Sync failed');
     }
-  }, [activeClient, isSyncing, startPolling]);
+  }, [activeClient, isSyncing, startPolling, apiFetch]);
 
   return { sync, isSyncing, progress, error };
 }

@@ -8,7 +8,7 @@ export const msalConfig: Configuration = {
     postLogoutRedirectUri: window.location.origin,
   },
   cache: {
-    cacheLocation: 'localStorage',
+    cacheLocation: 'sessionStorage',
     storeAuthStateInCookie: false,
   },
   system: {
@@ -20,4 +20,8 @@ export const msalConfig: Configuration = {
 
 export const loginRequest = {
   scopes: ['User.Read'],
+};
+
+export const backendRequest = {
+  scopes: [`api://${import.meta.env.VITE_ENTRA_CLIENT_ID}/access_as_user`],
 };

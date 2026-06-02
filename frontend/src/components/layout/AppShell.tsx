@@ -3,6 +3,7 @@ import { useState, useCallback, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useClientStore } from '@/stores/clientStore';
 import { useTheme } from '@/contexts/ThemeContext';
+import { useAuth } from '@/auth/AuthProvider';
 import { Sidebar } from './Sidebar';
 import { InsightsPanel } from './InsightsPanel';
 import { ChatTerminal } from '@/components/chat/ChatTerminal';
@@ -14,6 +15,8 @@ import { BsSun, BsMoon } from 'react-icons/bs';
 export function AppShell() {
   const navigate = useNavigate();
   const { isDark, toggleTheme } = useTheme();
+  const { user } = useAuth();
+  const initials = user?.name?.split(' ').map(p => p[0]).slice(0, 2).join('').toUpperCase() ?? '?';
   const {
     leftPanelWidth, rightPanelWidth,
     leftPanelCollapsed, rightPanelCollapsed,
@@ -70,15 +73,26 @@ export function AppShell() {
             </button>
             <span className="text-sm font-semibold text-accent">{activeClient || 'CIA'}</span>
           </div>
-          <button
-            type="button"
-            onClick={toggleTheme}
-            title={isDark ? 'Switch to light mode' : 'Switch to dark mode'}
-            aria-label={isDark ? 'Switch to light mode' : 'Switch to dark mode'}
-            className="text-text-muted hover:text-text-primary transition-colors p-1 rounded"
-          >
-            {isDark ? <BsSun size={14} /> : <BsMoon size={14} />}
-          </button>
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={() => navigate('/profile')}
+              title="View profile"
+              aria-label="View profile"
+              className="w-7 h-7 rounded-full bg-accent/20 text-accent text-xs font-bold flex items-center justify-center hover:bg-accent/30 transition-colors"
+            >
+              {initials}
+            </button>
+            <button
+              type="button"
+              onClick={toggleTheme}
+              title={isDark ? 'Switch to light mode' : 'Switch to dark mode'}
+              aria-label={isDark ? 'Switch to light mode' : 'Switch to dark mode'}
+              className="text-text-muted hover:text-text-primary transition-colors p-1 rounded"
+            >
+              {isDark ? <BsSun size={14} /> : <BsMoon size={14} />}
+            </button>
+          </div>
         </header>
         <div className="flex-1 overflow-hidden">
           {activeTab === 'files' && <Sidebar />}
@@ -119,6 +133,15 @@ export function AppShell() {
           <span className="text-sm font-bold text-accent tracking-wide">{activeClient || 'CLIENT INTELLIGENCE AGENT'}</span>
         </div>
         <div className="flex items-center gap-3">
+          <button
+            type="button"
+            onClick={() => navigate('/profile')}
+            title="View profile"
+            aria-label="View profile"
+            className="w-7 h-7 rounded-full bg-accent/20 text-accent text-xs font-bold flex items-center justify-center hover:bg-accent/30 transition-colors"
+          >
+            {initials}
+          </button>
           <button
             type="button"
             onClick={toggleTheme}
