@@ -1,7 +1,7 @@
 // frontend/src/components/communication/MeetingLogList.tsx
 import { useState } from 'react';
 import { VscCalendar, VscChevronDown, VscChevronRight, VscLoading } from 'react-icons/vsc';
-import { useFetchTranscript } from '../../hooks/useCommunication';
+import { useFetchTranscript, useRespondToMeeting } from '../../hooks/useCommunication';
 import type { MeetingLog } from '../../types';
 
 interface Props {
@@ -20,7 +20,9 @@ const responseColor: Record<string, string> = {
 export function MeetingLogList({ meetings, loading, onReload }: Props) {
   const [expanded, setExpanded] = useState<string | null>(null);
   const [fetchingTranscript, setFetchingTranscript] = useState<string | null>(null);
+  const [respondingMeeting, setRespondingMeeting] = useState<string | null>(null);
   const fetchTranscript = useFetchTranscript();
+  const respondToMeeting = useRespondToMeeting();
 
   async function handleFetchTranscript(clientName: string, meetingId: string) {
     setFetchingTranscript(meetingId);
@@ -29,6 +31,16 @@ export function MeetingLogList({ meetings, loading, onReload }: Props) {
       onReload();
     } finally {
       setFetchingTranscript(null);
+    }
+  }
+
+  async function handleRespond(clientName: string, meetingId: string, response: 'accept' | 'decline' | 'tentative') {
+    setRespondingMeeting(meetingId);
+    try {
+      await respondToMeeting(clientName, meetingId, response);
+      onReload();
+    } finally {
+      setRespondingMeeting(null);
     }
   }
 
@@ -94,6 +106,43 @@ export function MeetingLogList({ meetings, loading, onReload }: Props) {
                     </>
                   )}
                 </div>
+
+                {/* RSVP actions */}
+                {m.global_id && (
+                  <div className="flex items-center gap-2 pt-1">
+                    <span className="text-[10px] text-text-muted shrink-0">RSVP:</span>
+                    {m.my_response !== 'accepted' && (
+                      <button
+                        type="button"
+                        onClick={() => handleRespond(m.client_name, m.id, 'accept')}
+                        disabled={respondingMeeting === m.id}
+                        className="px-2 py-0.5 text-[10px] rounded bg-accent/15 text-accent hover:bg-accent/25 disabled:opacity-40 transition-colors"
+                      >
+                        {respondingMeeting === m.id ? <VscLoading size={10} className="animate-spin inline" /> : 'Accept'}
+                      </button>
+                    )}
+                    {m.my_response !== 'tentative' && (
+                      <button
+                        type="button"
+                        onClick={() => handleRespond(m.client_name, m.id, 'tentative')}
+                        disabled={respondingMeeting === m.id}
+                        className="px-2 py-0.5 text-[10px] rounded bg-yellow-500/15 text-yellow-400 hover:bg-yellow-500/25 disabled:opacity-40 transition-colors"
+                      >
+                        {respondingMeeting === m.id ? <VscLoading size={10} className="animate-spin inline" /> : 'Tentative'}
+                      </button>
+                    )}
+                    {m.my_response !== 'declined' && (
+                      <button
+                        type="button"
+                        onClick={() => handleRespond(m.client_name, m.id, 'decline')}
+                        disabled={respondingMeeting === m.id}
+                        className="px-2 py-0.5 text-[10px] rounded bg-red-500/15 text-red-400 hover:bg-red-500/25 disabled:opacity-40 transition-colors"
+                      >
+                        {respondingMeeting === m.id ? <VscLoading size={10} className="animate-spin inline" /> : 'Decline'}
+                      </button>
+                    )}
+                  </div>
+                )}
 
                 {/* Attendees */}
                 <div>

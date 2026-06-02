@@ -1,7 +1,7 @@
 # backend/app/models/communication.py
 import uuid
 from datetime import datetime, timezone
-from typing import Optional
+from typing import Literal, Optional
 from pydantic import BaseModel, Field
 
 
@@ -23,6 +23,20 @@ class CommunicationConfig(BaseModel):
     updated_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 
 
+class EmailClassification(BaseModel):
+    match_type: Literal["domain_match", "contact_match", "keyword_match"]
+    match_field: Literal["sender", "recipient", "subject", "body", "subject_and_body"]
+    matched_value: str
+    keyword_occurrences: int = 0
+    first_occurrence_position: Optional[int] = None
+
+
+class MeetingClassification(BaseModel):
+    match_type: Literal["domain_match", "contact_match", "keyword_match"]
+    match_field: Literal["attendee", "subject", "body", "subject_and_body"]
+    matched_value: str
+
+
 class ScannedEmail(BaseModel):
     id: str = Field(default_factory=lambda: str(uuid.uuid4()))
     client_name: str
@@ -38,7 +52,8 @@ class ScannedEmail(BaseModel):
     thread_id: Optional[str] = None
     has_draft_reply: bool = False
     draft_reply_id: Optional[str] = None
-    attribution_reason: str = "domain_match"   # "domain_match" | "keyword_match" | "contact_match"
+    attribution_reason: str = "domain_match"   # kept for backward compat with old Cosmos records
+    classification: Optional[EmailClassification] = None
     has_attachment: bool = False
     attachment_names: list[str] = []
     indexed_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
@@ -63,9 +78,11 @@ class MeetingLog(BaseModel):
     is_teams_meeting: bool = False
     teams_join_url: Optional[str] = None
     online_meeting_id: Optional[str] = None
+    global_id: Optional[str] = None   # raw GlobalAppointmentID from Outlook, needed for RSVP
     my_response: str = "none"        # "accepted" | "declined" | "tentative" | "none"
     transcript_summary: Optional[str] = None
     action_items_extracted: list[str] = []
+    classification: Optional[MeetingClassification] = None
     indexed_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 
 

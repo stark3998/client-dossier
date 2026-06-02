@@ -362,6 +362,14 @@ export interface CommunicationConfig {
   updated_at?: string;
 }
 
+export interface EmailClassification {
+  match_type: 'domain_match' | 'contact_match' | 'keyword_match';
+  match_field: 'sender' | 'recipient' | 'subject' | 'body' | 'subject_and_body' | 'attendee' | 'unknown';
+  matched_value: string;
+  keyword_occurrences?: number;
+  first_occurrence_position?: number;
+}
+
 export interface ScannedEmail {
   id: string;
   client_name: string;
@@ -378,6 +386,7 @@ export interface ScannedEmail {
   has_draft_reply: boolean;
   draft_reply_id?: string;
   attribution_reason: 'domain_match' | 'keyword_match' | 'contact_match';
+  classification?: EmailClassification;
   has_attachment: boolean;
   attachment_names: string[];
   indexed_at: string;
@@ -387,6 +396,12 @@ export interface MeetingAttendee {
   name: string;
   email: string;
   response_status: 'accepted' | 'declined' | 'tentative' | 'none';
+}
+
+export interface MeetingClassification {
+  match_type: 'domain_match' | 'contact_match' | 'keyword_match';
+  match_field: 'attendee' | 'subject' | 'body' | 'subject_and_body';
+  matched_value: string;
 }
 
 export interface MeetingLog {
@@ -402,9 +417,11 @@ export interface MeetingLog {
   is_teams_meeting: boolean;
   teams_join_url?: string;
   online_meeting_id?: string;
+  global_id?: string;
   my_response: 'accepted' | 'declined' | 'tentative' | 'none';
   transcript_summary?: string;
   action_items_extracted: string[];
+  classification?: MeetingClassification;
   indexed_at: string;
 }
 
@@ -439,5 +456,6 @@ export interface EmailThread {
   has_draft_reply: boolean;
   has_attachment: boolean;
   attribution_reason: 'domain_match' | 'keyword_match' | 'contact_match';
+  classification?: EmailClassification;
   ai_summary?: string;
 }

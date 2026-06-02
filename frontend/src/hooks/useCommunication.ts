@@ -117,6 +117,30 @@ export function useFetchTranscript() {
   );
 }
 
+export function useRespondToMeeting() {
+  const { fetchJSON } = useCommunicationFetch();
+  return useCallback(
+    (clientName: string, meetingId: string, response: 'accept' | 'decline' | 'tentative') =>
+      fetchJSON<{ status: string; response: string }>(
+        apiUrl(`/api/communication/${encodeURIComponent(clientName)}/meetings/${meetingId}/respond`),
+        { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ response }) }
+      ),
+    [fetchJSON],
+  );
+}
+
+export function useCreateDraft() {
+  const { fetchJSON } = useCommunicationFetch();
+  return useCallback(
+    (clientName: string, emailId: string) =>
+      fetchJSON<DraftReply>(
+        apiUrl(`/api/communication/${encodeURIComponent(clientName)}/drafts`),
+        { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ email_id: emailId }) }
+      ),
+    [fetchJSON],
+  );
+}
+
 // -- Drafts -------------------------------------------------------------------
 
 export function useDrafts(clientName: string, status?: string) {

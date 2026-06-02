@@ -1,7 +1,7 @@
 // frontend/src/components/communication/ThreadList.tsx
 import { useState } from 'react';
 import { VscAttach, VscMail, VscSearch } from 'react-icons/vsc';
-import type { EmailThread } from '../../types';
+import type { EmailClassification, EmailThread } from '../../types';
 
 interface Props {
   threads: EmailThread[];
@@ -16,6 +16,24 @@ const attributionColors: Record<string, string> = {
   keyword_match: 'bg-yellow-500/15 text-yellow-400',
   contact_match: 'bg-purple-500/15 text-purple-400',
 };
+
+function classificationLabel(cls: EmailClassification | undefined, fallback: string): string {
+  if (!cls || !cls.matched_value) return fallback.replace(/_/g, ' ');
+  const val = cls.matched_value;
+  switch (cls.match_type) {
+    case 'domain_match':
+      return cls.match_field === 'sender' ? `from @${val}` : `to @${val}`;
+    case 'contact_match':
+      return cls.match_field === 'sender' ? `from ${val.split('@')[0]}` : `to ${val.split('@')[0]}`;
+    case 'keyword_match': {
+      const fieldLabel = cls.match_field === 'subject' ? 'subject' : cls.match_field === 'body' ? 'body' : 'subject+body';
+      const count = cls.keyword_occurrences && cls.keyword_occurrences > 1 ? ` ×${cls.keyword_occurrences}` : '';
+      return `${val} in ${fieldLabel}${count}`;
+    }
+    default:
+      return fallback.replace(/_/g, ' ');
+  }
+}
 
 function relativeTime(iso: string): string {
   const diff = Date.now() - new Date(iso).getTime();
@@ -118,8 +136,11 @@ export function ThreadList({ threads, loading, selectedKey, onSelect, onSearch }
 
                       {/* Badges row */}
                       <div className="flex items-center gap-1 mt-1 flex-wrap">
-                        <span className={`text-[9px] px-1.5 py-0.5 rounded ${attributionColors[thread.attribution_reason] ?? 'bg-bg-secondary text-text-muted'}`}>
-                          {thread.attribution_reason.replace('_', ' ')}
+                        <span
+                          className={`text-[9px] px-1.5 py-0.5 rounded truncate max-w-[120px] ${attributionColors[thread.attribution_reason] ?? 'bg-bg-secondary text-text-muted'}`}
+                          title={classificationLabel(thread.classification, thread.attribution_reason)}
+                        >
+                          {classificationLabel(thread.classification, thread.attribution_reason)}
                         </span>
                         {thread.has_draft_reply && (
                           <span className="text-[9px] px-1.5 py-0.5 rounded bg-orange-500/15 text-orange-400">

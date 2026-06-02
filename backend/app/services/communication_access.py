@@ -84,6 +84,18 @@ class CommunicationAccess:
             return True
         return False
 
+    async def respond_to_meeting(self, entry_id: str, response: str) -> bool:
+        """Accept, decline, or tentatively accept a meeting by its Outlook EntryID.
+
+        response: "accept" | "decline" | "tentative"
+        Returns True on success, False if win32com unavailable.
+        """
+        if self._win32.is_available():
+            await asyncio.to_thread(self._win32.respond_to_meeting, entry_id, response)
+            return True
+        logger.warning("respond_to_meeting: win32com not available, Graph RSVP not implemented")
+        return False
+
     # Teams — always via Graph
 
     async def get_joined_teams(self) -> list[dict]:

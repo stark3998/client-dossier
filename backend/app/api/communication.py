@@ -103,11 +103,16 @@ async def list_emails(
     since = (datetime.now(timezone.utc) - timedelta(days=days)).isoformat()
     items = await repo.query(
         "SELECT c.id, c.subject, c.sender, c.recipients, c.body_preview, "
-        "c.received_at, c.folder, c.account, c.attribution_reason, "
+        "c.received_at, c.folder, c.account, c.attribution_reason, c.classification, "
         "c.has_draft_reply, c.has_attachment, c.attachment_names "
         "FROM c WHERE c.received_at >= @since ORDER BY c.received_at DESC",
         [{"name": "@since", "value": since}],
     )
+    # Backward-compat shim: old records have attribution_reason string but no classification object
+    for item in items:
+        if item.get("classification") is None and item.get("attribution_reason"):
+            item["classification"] = {"match_type": item["attribution_reason"], "match_field": "unknown", "matched_value": ""}
+
     if search:
         sl = search.lower()
         items = [
@@ -142,8 +147,8 @@ async def list_meetings(
     from datetime import timedelta
     since = (datetime.now(timezone.utc) - timedelta(days=days)).isoformat()
     items = await repo.query(
-        "SELECT c.id, c.subject, c.organizer, c.attendees, c.start_time, c.end_time, "
-        "c.location, c.is_teams_meeting, c.my_response, "
+        "SELECT c.id, c.client_name, c.subject, c.organizer, c.attendees, c.start_time, c.end_time, "
+        "c.location, c.is_teams_meeting, c.my_response, c.global_id, c.classification, "
         "c.transcript_summary, c.action_items_extracted "
         "FROM c WHERE c.start_time >= @since ORDER BY c.start_time DESC",
         [{"name": "@since", "value": since}],
@@ -190,6 +195,40 @@ async def fetch_transcript(client_name: str, meeting_id: str, background_tasks: 
 
     background_tasks.add_task(_run)
     return {"status": "transcript_fetch_triggered"}
+
+
+@router.post("/{client_name}/meetings/{meeting_id}/respond")
+async def respond_to_meeting(client_name: str, meeting_id: str, body: dict):
+    """Accept, decline, or tentatively accept a meeting invite via Outlook.
+
+    body: {"response": "accept" | "decline" | "tentative"}
+    """
+    response = body.get("response", "")
+    if response not in ("accept", "decline", "tentative"):
+        raise HTTPException(status_code=400, detail="response must be 'accept', 'decline', or 'tentative'")
+
+    from app.dependencies import get_communication_access
+    access = get_communication_access()
+    if access is None:
+        raise HTTPException(status_code=503, detail="Communication access not initialized")
+
+    repo = await _get_repo(client_name, "meetings")
+    meeting = await repo.get(meeting_id, client_name)
+    if not meeting:
+        raise HTTPException(status_code=404, detail="Meeting not found")
+
+    global_id = meeting.get("global_id")
+    if not global_id:
+        raise HTTPException(status_code=422, detail="Meeting has no Outlook entry ID — cannot respond via win32com")
+
+    success = await access.respond_to_meeting(global_id, response)
+    if not success:
+        raise HTTPException(status_code=503, detail="Outlook not available for RSVP")
+
+    response_label = {"accept": "accepted", "decline": "declined", "tentative": "tentative"}[response]
+    meeting["my_response"] = response_label
+    await repo.upsert(meeting)
+    return {"status": "responded", "response": response_label, "meeting_id": meeting_id}
 
 
 # -- Draft Replies ------------------------------------------------------------
@@ -296,6 +335,95 @@ async def submit_draft_feedback(client_name: str, draft_id: str, body: dict):
     return {"status": "feedback_saved"}
 
 
+@router.post("/{client_name}/drafts")
+async def create_draft(client_name: str, body: dict):
+    """Manually create a draft reply for an email.
+
+    body: {"email_id": str}
+    Fetches thread context (up to 3 prior emails) and generates a reply via the AI kernel.
+    """
+    email_id = body.get("email_id")
+    if not email_id:
+        raise HTTPException(status_code=400, detail="email_id required")
+
+    email_repo = await _get_repo(client_name, "emails")
+    draft_repo = await _get_repo(client_name, "draft_replies")
+
+    email = await email_repo.get(email_id, client_name)
+    if not email:
+        raise HTTPException(status_code=404, detail="Email not found")
+
+    # Check for existing draft for this email
+    existing = await draft_repo.query(
+        "SELECT * FROM c WHERE c.email_id = @eid AND c.status != 'discarded'",
+        [{"name": "@eid", "value": email_id}],
+    )
+    if existing:
+        return existing[0]
+
+    # Gather thread context (last 3 emails in same thread, excluding this one)
+    thread_id = email.get("thread_id")
+    thread_context = ""
+    if thread_id:
+        thread_emails = await email_repo.query(
+            "SELECT c.sender, c.subject, c.body_preview, c.received_at "
+            "FROM c WHERE c.thread_id = @tid AND c.id != @eid ORDER BY c.received_at DESC OFFSET 0 LIMIT 3",
+            [{"name": "@tid", "value": thread_id}, {"name": "@eid", "value": email_id}],
+        )
+        if thread_emails:
+            thread_context = "\n\n---Prior messages in thread---\n" + "\n\n".join(
+                f"From: {e.get('sender','')}\n{e.get('body_preview','')[:300]}" for e in thread_emails
+            )
+
+    from app.dependencies import get_communication_scanner
+    scanner = get_communication_scanner()
+
+    from app.models.communication import ScannedEmail
+    try:
+        email_model = ScannedEmail(**email)
+    except Exception:
+        raise HTTPException(status_code=422, detail="Could not parse email record")
+
+    # Generate body — if scanner has kernel use AI, else use fallback
+    if scanner and scanner._kernel:
+        try:
+            from semantic_kernel.contents import ChatHistory
+            chat = ChatHistory()
+            chat.add_system_message(
+                f"You are a professional consultant. Draft a concise, professional email reply "
+                f"for the client '{client_name}'. Keep it brief (3-5 sentences). "
+                f"Do not include subject line. Start with a greeting."
+            )
+            chat.add_user_message(
+                f"Original email from {email.get('sender','')}:\n"
+                f"Subject: {email.get('subject','')}\n\n"
+                f"{email.get('body_full') or email.get('body_preview','')}"
+                f"{thread_context}"
+            )
+            from app.agent.kernel import get_execution_settings
+            result = await scanner._kernel.invoke_prompt(
+                prompt="{{$chat_history}}",
+                chat_history=chat,
+                settings=get_execution_settings(),
+            )
+            draft_body = str(result)
+        except Exception as e:
+            logger.warning("Draft generation failed: %s", e)
+            draft_body = f"Thank you for your email. We will review and respond shortly.\n\n[Auto-generated draft for: {email.get('subject','')}]"
+    else:
+        draft_body = f"[Auto-draft] Thank you for your email regarding: {email.get('subject','')}\n\nPlease review and edit this draft before sending."
+
+    draft = DraftReply(
+        client_name=client_name,
+        email_id=email_id,
+        subject=f"Re: {email.get('subject', '')}",
+        to=[email.get("sender", "")] if email.get("sender") else [],
+        body=draft_body,
+    )
+    result = await draft_repo.upsert(draft.model_dump(mode="json"))
+    return result
+
+
 @router.delete("/{client_name}/drafts/{draft_id}")
 async def discard_draft(client_name: str, draft_id: str):
     repo = await _get_repo(client_name, "draft_replies")
@@ -382,11 +510,14 @@ async def list_threads(
     since = (datetime.now(timezone.utc) - timedelta(days=days)).isoformat()
     emails = await repo.query(
         "SELECT c.id, c.subject, c.sender, c.recipients, c.body_preview, "
-        "c.received_at, c.thread_id, c.has_draft_reply, c.attribution_reason, "
+        "c.received_at, c.thread_id, c.has_draft_reply, c.attribution_reason, c.classification, "
         "c.has_attachment, c.folder, c.account "
         "FROM c WHERE c.received_at >= @since ORDER BY c.received_at DESC",
         [{"name": "@since", "value": since}],
     )
+    for e in emails:
+        if e.get("classification") is None and e.get("attribution_reason"):
+            e["classification"] = {"match_type": e["attribution_reason"], "match_field": "unknown", "matched_value": ""}
 
     if search:
         sl = search.lower()

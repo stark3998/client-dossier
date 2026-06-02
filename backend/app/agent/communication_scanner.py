@@ -14,6 +14,8 @@ from typing import Optional
 from app.models.communication import (
     CommunicationConfig,
     DraftReply,
+    EmailClassification,
+    MeetingClassification,
     MeetingLog,
     RawCalendarItem,
     RawEmail,
@@ -103,8 +105,8 @@ class CommunicationScanner:
                         account.display_name, folder, since
                     )
                     for raw in raw_emails:
-                        reason = self._attribute(raw, config)
-                        if reason is None:
+                        cls = self._attribute(raw, config)
+                        if cls is None:
                             continue
 
                         email_id = hashlib.sha256(raw.message_id.encode()).hexdigest()[:36] if raw.message_id else None
@@ -130,9 +132,11 @@ class CommunicationScanner:
                             thread_id=raw.thread_id,
                             has_attachment=raw.has_attachment,
                             attachment_names=raw.attachment_names,
-                            attribution_reason=reason,
+                            attribution_reason=cls.match_type,
+                            classification=cls,
                         )
                         await email_repo.upsert(scanned.model_dump(mode="json"))
+                        await self._update_memory_from_email(client_name, client_id, scanned)
 
                         # Auto-draft: create a reply for inbound emails from client contacts if enabled
                         if config.auto_draft and folder.lower() in ("inbox", "inbox"):
@@ -160,7 +164,8 @@ class CommunicationScanner:
                     account.display_name, since, until
                 )
                 for raw in raw_items:
-                    if not self._meeting_matches(raw, config):
+                    meeting_cls = self._meeting_matches(raw, config)
+                    if meeting_cls is None:
                         continue
 
                     meeting_id = hashlib.sha256(raw.global_id.encode()).hexdigest()[:36] if raw.global_id else None
@@ -198,9 +203,11 @@ class CommunicationScanner:
                         is_teams_meeting=raw.is_teams_meeting,
                         teams_join_url=raw.teams_join_url,
                         online_meeting_id=raw.online_meeting_id,
+                        global_id=raw.global_id or None,
                         my_response=raw.my_response,
                         transcript_summary=transcript_summary,
                         action_items_extracted=action_items,
+                        classification=meeting_cls,
                     )
                     await meeting_repo.upsert(meeting.model_dump(mode="json"))
 
@@ -214,45 +221,79 @@ class CommunicationScanner:
             except Exception as e:
                 logger.warning("Calendar scan error for %s/%s: %s", client_name, account.display_name, e)
 
-    def _attribute(self, raw: RawEmail, config: CommunicationConfig) -> Optional[str]:
-        """Return attribution reason if this email belongs to the client, else None."""
-        all_addresses = [raw.sender] + raw.recipients
-        lower_addresses = [a.lower() for a in all_addresses if a]
+    def _attribute(self, raw: RawEmail, config: CommunicationConfig) -> Optional[EmailClassification]:
+        """Return rich classification if this email belongs to the client, else None."""
+        sender_lower = raw.sender.lower() if raw.sender else ""
+        recipient_lowers = [r.lower() for r in raw.recipients if r]
 
         for domain in config.domains:
             d = domain.lower().lstrip("@")
-            if any(f"@{d}" in a for a in lower_addresses):
-                return "domain_match"
+            if f"@{d}" in sender_lower:
+                return EmailClassification(match_type="domain_match", match_field="sender", matched_value=d)
+            if any(f"@{d}" in r for r in recipient_lowers):
+                return EmailClassification(match_type="domain_match", match_field="recipient", matched_value=d)
 
         for contact in config.contacts:
-            if contact.lower() in lower_addresses:
-                return "contact_match"
+            c = contact.lower()
+            if c == sender_lower:
+                return EmailClassification(match_type="contact_match", match_field="sender", matched_value=contact)
+            if c in recipient_lowers:
+                return EmailClassification(match_type="contact_match", match_field="recipient", matched_value=contact)
 
-        text = f"{raw.subject} {raw.body}".lower()
+        subject_lower = raw.subject.lower() if raw.subject else ""
+        body_lower = raw.body.lower() if raw.body else ""
         for kw in config.keywords:
-            if kw.lower() in text:
-                return "keyword_match"
+            kw_lower = kw.lower()
+            in_subject = kw_lower in subject_lower
+            in_body = kw_lower in body_lower
+            if in_subject or in_body:
+                if in_subject and in_body:
+                    field = "subject_and_body"
+                elif in_subject:
+                    field = "subject"
+                else:
+                    field = "body"
+                occurrences = body_lower.count(kw_lower) if in_body else 0
+                pos = body_lower.find(kw_lower) if in_body else None
+                return EmailClassification(
+                    match_type="keyword_match",
+                    match_field=field,
+                    matched_value=kw,
+                    keyword_occurrences=occurrences,
+                    first_occurrence_position=pos,
+                )
 
         return None
 
-    def _meeting_matches(self, raw: RawCalendarItem, config: CommunicationConfig) -> bool:
+    def _meeting_matches(self, raw: RawCalendarItem, config: CommunicationConfig) -> Optional[MeetingClassification]:
+        """Return classification if this meeting belongs to the client, else None."""
         attendee_emails = [a.email.lower() for a in raw.attendees if a.email]
 
         for domain in config.domains:
             d = domain.lower().lstrip("@")
             if any(f"@{d}" in e for e in attendee_emails):
-                return True
+                return MeetingClassification(match_type="domain_match", match_field="attendee", matched_value=d)
 
         for contact in config.contacts:
             if contact.lower() in attendee_emails:
-                return True
+                return MeetingClassification(match_type="contact_match", match_field="attendee", matched_value=contact)
 
-        text = f"{raw.subject} {raw.body}".lower()
+        subject_lower = raw.subject.lower() if raw.subject else ""
+        body_lower = raw.body.lower() if raw.body else ""
         for kw in config.keywords:
-            if kw.lower() in text:
-                return True
+            kw_lower = kw.lower()
+            in_subject = kw_lower in subject_lower
+            in_body = kw_lower in body_lower
+            if in_subject or in_body:
+                if in_subject and in_body:
+                    field = "subject_and_body"
+                elif in_subject:
+                    field = "subject"
+                else:
+                    field = "body"
+                return MeetingClassification(match_type="keyword_match", match_field=field, matched_value=kw)
 
-        return False
+        return None
 
     async def _maybe_create_draft(
         self,
@@ -376,6 +417,37 @@ class CommunicationScanner:
         except Exception:
             pass
         return []
+
+    async def _update_memory_from_email(self, client_name: str, client_id: str, email: ScannedEmail):
+        try:
+            repo = await self._manager.get_client_repo(client_id, "memories")
+            memory = await repo.get(client_id, client_id)
+            if memory is None:
+                memory = {"id": client_id, "client_name": client_name}
+
+            existing_emails = {s.get("email", "").lower() for s in memory.get("key_stakeholders", [])}
+            stakeholders = memory.get("key_stakeholders", [])
+            for addr in [email.sender] + email.recipients:
+                if addr and "@" in addr and addr.lower() not in existing_emails:
+                    name = addr.split("@")[0].replace(".", " ").replace("_", " ").title()
+                    stakeholders.append({"name": name, "email": addr})
+                    existing_emails.add(addr.lower())
+            memory["key_stakeholders"] = stakeholders
+
+            note: dict = {
+                "date": email.received_at.isoformat(),
+                "subject": email.subject[:80],
+                "match_type": email.attribution_reason,
+                "match_field": email.classification.match_field if email.classification else "",
+                "matched_value": email.classification.matched_value if email.classification else "",
+            }
+            notes = memory.get("communication_notes", [])
+            notes.append(note)
+            memory["communication_notes"] = notes[-30:]
+            memory["last_updated"] = datetime.now(timezone.utc).isoformat()
+            await repo.upsert(memory)
+        except Exception as e:
+            logger.warning("Memory update from email failed: %s", e)
 
     async def _update_memory_from_meeting(self, client_name: str, client_id: str, meeting: MeetingLog):
         try:

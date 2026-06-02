@@ -219,6 +219,29 @@ class OutlookWin32Service:
         finally:
             pythoncom.CoUninitialize()
 
+    def respond_to_meeting(self, entry_id: str, response: str) -> None:
+        """Accept, decline, or tentatively accept a meeting invite by its GlobalAppointmentID or EntryID.
+
+        response: "accept" | "decline" | "tentative"
+        Uses Respond() COM method to suppress any UI dialogs (fNoUI=True).
+        olMeetingTentative=2, olMeetingAccepted=3, olMeetingDeclined=4
+        """
+        import pythoncom
+        import win32com.client
+        pythoncom.CoInitialize()
+        try:
+            outlook = win32com.client.Dispatch("Outlook.Application")
+            ns = outlook.GetNamespace("MAPI")
+            item = ns.GetItemFromID(entry_id)
+            response_map = {"accept": 3, "tentative": 2, "decline": 4}
+            code = response_map.get(response)
+            if code is None:
+                raise ValueError(f"Invalid response value: {response}")
+            item.Respond(code, True)
+            item.Save()
+        finally:
+            pythoncom.CoUninitialize()
+
     def update_draft(self, entry_id: str, body: str, subject: Optional[str] = None) -> None:
         """Update an existing Outlook draft by EntryID."""
         import pythoncom
