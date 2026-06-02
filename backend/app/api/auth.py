@@ -18,7 +18,7 @@ LOCAL_USER = {
     "roles": ["admin"],
 }
 
-UNPROTECTED_PATHS = {"/health", "/ready", "/docs", "/redoc", "/openapi.json"}
+UNPROTECTED_PATHS = {"/health", "/ready", "/docs", "/redoc", "/openapi.json", "/mcp/tools", "/mcp/health"}
 
 
 class AuthMiddleware(BaseHTTPMiddleware):

@@ -1,0 +1,29 @@
+# Client-Agent MCP Server — OpenAI Codex Configuration
+# Place at: ~/.codex/config.yaml or pass via CODEX_CONFIG env var
+# Requires CLIENT_AGENT_MCP_TOKEN set in your environment
+
+mcp_servers:
+  - name: client-agent
+    transport: sse
+    url: http://localhost:8000/mcp/sse
+    auth:
+      type: bearer
+      token: ${CLIENT_AGENT_MCP_TOKEN}
+    tools:
+      - search_client_documents
+      - ingest_documents
+      - read_client_memory
+      - write_client_memory
+      - list_indexed_files
+      - generate_insights
+      - get_client_communications
+      - get_engagements
+      - get_client_timeline
+      - get_action_items
+      - get_client_health
+      - generate_briefing
+    options:
+      timeout_ms: 30000
+      retry:
+        max_attempts: 3
+        backoff_ms: 1000
