@@ -37,6 +37,7 @@ async def startup_services():
     from app.services.search import create_search_service
     _search_service = create_search_service()
     await _search_service.initialize()
+    await _search_service.ensure_index()
 
     # Embedding service
     from app.services.embeddings import create_embedding_service

@@ -2,6 +2,7 @@ import React, { createContext, useContext } from 'react';
 import { MsalProvider, AuthenticatedTemplate, UnauthenticatedTemplate, useMsal } from '@azure/msal-react';
 import { PublicClientApplication } from '@azure/msal-browser';
 import { msalConfig, loginRequest } from './msalConfig';
+import { useServiceHealth } from '@/hooks/useServiceHealth';
 
 interface AuthContextType {
   user: { name: string; email: string } | null;
@@ -37,6 +38,8 @@ function AuthenticatedApp({ children }: { children: React.ReactNode }) {
   const { accounts } = useMsal();
   const account = accounts[0];
   const user = account ? { name: account.name || '', email: account.username || '' } : null;
+
+  useServiceHealth();
 
   return (
     <AuthContext.Provider value={{ user, isLocalMode: false }}>

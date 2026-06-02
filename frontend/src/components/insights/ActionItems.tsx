@@ -7,7 +7,7 @@ interface Props {
 }
 
 export function ActionItems({ items }: Props) {
-  if (items.length === 0) return null;
+  if (!items?.length) return null;
 
   return (
     <div className="bg-bg-secondary rounded-md p-3 border border-border-default">

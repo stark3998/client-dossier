@@ -29,7 +29,7 @@ class AuthMiddleware(BaseHTTPMiddleware):
 
         settings = get_settings()
 
-        if settings.LOCAL_MODE:
+        if settings.LOCAL_MODE or settings.BYPASS_AUTH:
             request.state.user = LOCAL_USER
             return await call_next(request)
 

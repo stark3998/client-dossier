@@ -6,21 +6,36 @@ logger = logging.getLogger(__name__)
 _tracer: trace.Tracer | None = None
 
 
+def _is_valid_connection_string(cs: str) -> bool:
+    """Check that the connection string contains a UUID instrumentation key."""
+    import re, uuid as _uuid
+    m = re.search(r'InstrumentationKey=([^;]+)', cs, re.IGNORECASE)
+    if not m:
+        return False
+    try:
+        _uuid.UUID(m.group(1).strip())
+        return True
+    except ValueError:
+        return False
+
+
 def init_telemetry(app=None):
     global _tracer
     from app.config import get_settings
     settings = get_settings()
 
-    if settings.DISABLE_TELEMETRY or not settings.APPLICATIONINSIGHTS_CONNECTION_STRING:
-        logger.info("Telemetry disabled")
+    cs = settings.APPLICATIONINSIGHTS_CONNECTION_STRING
+    if settings.DISABLE_TELEMETRY or not cs or not _is_valid_connection_string(cs):
+        if cs and not settings.DISABLE_TELEMETRY:
+            logger.debug("Telemetry skipped: APPLICATIONINSIGHTS_CONNECTION_STRING is not a valid connection string")
+        else:
+            logger.info("Telemetry disabled")
         _tracer = trace.get_tracer("client-intelligence-agent")
         return
 
     try:
         from azure.monitor.opentelemetry import configure_azure_monitor
-        configure_azure_monitor(
-            connection_string=settings.APPLICATIONINSIGHTS_CONNECTION_STRING,
-        )
+        configure_azure_monitor(connection_string=cs)
         logger.info("Azure Monitor telemetry configured")
     except Exception as e:
         logger.warning("Failed to configure Azure Monitor: %s", e)

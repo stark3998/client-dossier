@@ -16,7 +16,7 @@ export function InsightsSummary({ memory }: Props) {
         {memory.financials_summary && (
           <p className="text-xs text-text-secondary">{memory.financials_summary}</p>
         )}
-        {memory.pain_points.length > 0 && (
+        {(memory.pain_points?.length ?? 0) > 0 && (
           <div>
             <span className="text-[10px] text-text-muted uppercase">Pain Points</span>
             <div className="flex flex-wrap gap-1 mt-1">
@@ -26,7 +26,7 @@ export function InsightsSummary({ memory }: Props) {
             </div>
           </div>
         )}
-        {memory.strategic_priorities.length > 0 && (
+        {(memory.strategic_priorities?.length ?? 0) > 0 && (
           <div>
             <span className="text-[10px] text-text-muted uppercase">Priorities</span>
             <div className="flex flex-wrap gap-1 mt-1">

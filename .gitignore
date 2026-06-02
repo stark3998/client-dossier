@@ -64,3 +64,6 @@ ehthumbs.db
 .env.*.local
 *.pem
 *.key
+
+*.log
+sync_job_ids.json

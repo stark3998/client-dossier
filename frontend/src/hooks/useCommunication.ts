@@ -11,10 +11,8 @@ import type {
   SourceChip,
 } from '../types';
 
-const API = import.meta.env.VITE_BACKEND_URL ?? '';
-
 function apiUrl(path: string) {
-  return `${API}${path}`;
+  return path;
 }
 
 // -- Internal authenticated fetch helper --------------------------------------

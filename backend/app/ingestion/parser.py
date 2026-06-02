@@ -46,7 +46,10 @@ def parse_document(file_path: str) -> ParsedDocument:
 
 def _parse_docx(path: str) -> list[DocumentSection]:
     from docx import Document
-    doc = Document(path)
+    try:
+        doc = Document(path)
+    except Exception as e:
+        raise ValueError(f"Cannot open docx: {e}") from e
     sections = []
     current_title = None
     current_text = []
@@ -73,7 +76,10 @@ def _parse_docx(path: str) -> list[DocumentSection]:
 
 def _parse_pptx(path: str) -> list[DocumentSection]:
     from pptx import Presentation
-    prs = Presentation(path)
+    try:
+        prs = Presentation(path)
+    except Exception as e:
+        raise ValueError(f"Cannot open pptx: {e}") from e
     sections = []
     for i, slide in enumerate(prs.slides, 1):
         title = None
@@ -95,10 +101,16 @@ def _parse_pptx(path: str) -> list[DocumentSection]:
 
 def _parse_xlsx(path: str) -> list[DocumentSection]:
     from openpyxl import load_workbook
-    wb = load_workbook(path, read_only=True, data_only=True)
+    from openpyxl.worksheet.worksheet import Worksheet
+    try:
+        wb = load_workbook(path, read_only=True, data_only=True)
+    except Exception as e:
+        raise ValueError(f"Cannot open xlsx: {e}") from e
     sections = []
     for sheet in wb.sheetnames:
         ws = wb[sheet]
+        if not isinstance(ws, Worksheet):
+            continue
         rows = []
         headers = []
         for i, row in enumerate(ws.iter_rows(values_only=True)):

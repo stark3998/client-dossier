@@ -35,6 +35,7 @@ class Settings(BaseSettings):
     ENTRA_CLIENT_ID: str = ""
     ENTRA_TENANT_ID: str = ""
     LOCAL_MODE: bool = False
+    BYPASS_AUTH: bool = False  # Skip JWT validation without switching to local stubs
 
     # Pipeline features
     RERANK_ENABLED: bool = True

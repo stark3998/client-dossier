@@ -27,7 +27,7 @@ async def run_ingestion(
     job.status = "running"
     job.started_at = datetime.now(timezone.utc)
     if job_repo:
-        await job_repo.upsert(job.model_dump())
+        await job_repo.upsert(job.model_dump(mode='json'))
 
     target_path = job.path or settings.ONEDRIVE_SYNC_PATH
     files = _discover_files(target_path)
@@ -46,7 +46,7 @@ async def run_ingestion(
             async with lock:
                 job.active_files.append(file_path)
                 if job_repo:
-                    await job_repo.upsert(job.model_dump())
+                    await job_repo.upsert(job.model_dump(mode='json'))
 
             result = None
             try:
@@ -72,7 +72,7 @@ async def run_ingestion(
                         "error": str(e)[:120],
                     }])[-20:]
                     if job_repo:
-                        await job_repo.upsert(job.model_dump())
+                        await job_repo.upsert(job.model_dump(mode='json'))
                 return
 
             async with lock:
@@ -88,7 +88,7 @@ async def run_ingestion(
                         "duration_ms": result["duration_ms"],
                     }])[-20:]
                 if job_repo:
-                    await job_repo.upsert(job.model_dump())
+                    await job_repo.upsert(job.model_dump(mode='json'))
 
     try:
         await asyncio.gather(*[process_file(fp) for fp in files])
@@ -101,7 +101,7 @@ async def run_ingestion(
         job.completed_at = datetime.now(timezone.utc)
         job.active_files = []
         if job_repo:
-            await job_repo.upsert(job.model_dump())
+            await job_repo.upsert(job.model_dump(mode='json'))
 
 
 async def _ingest_file(
@@ -188,14 +188,25 @@ async def _ingest_file(
 def _discover_files(path: str) -> list[str]:
     files = []
     if os.path.isfile(path):
-        if os.path.splitext(path)[1].lower() in SUPPORTED_EXTENSIONS:
+        if _is_indexable(path):
             files.append(path)
     elif os.path.isdir(path):
         for root, _, filenames in os.walk(path):
             for fname in filenames:
-                if os.path.splitext(fname)[1].lower() in SUPPORTED_EXTENSIONS:
-                    files.append(os.path.join(root, fname))
+                full = os.path.join(root, fname)
+                if _is_indexable(full):
+                    files.append(full)
     return sorted(files)
+
+
+def _is_indexable(file_path: str) -> bool:
+    fname = os.path.basename(file_path)
+    if fname.startswith("~$"):  # Office temp lock files
+        return False
+    if fname.startswith("."):   # Hidden files
+        return False
+    ext = os.path.splitext(fname)[1].lower()
+    return ext in SUPPORTED_EXTENSIONS
 
 
 def _infer_client_name(file_path: str, base_path: str) -> str:
