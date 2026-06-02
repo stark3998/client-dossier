@@ -144,48 +144,86 @@ async def shutdown_services():
     logger.info("All services shut down")
 
 
+def _local_cosmos_manager():
+    """Lazy-init a LocalCosmosClientManager for LOCAL_MODE when startup_services() was not called."""
+    global _cosmos_manager
+    from app.services.cosmos import LocalCosmosClientManager
+    mgr = LocalCosmosClientManager()
+    _cosmos_manager = mgr
+    return mgr
+
+
+def _local_search_service():
+    """Lazy-init a LocalSearchService for LOCAL_MODE when startup_services() was not called."""
+    global _search_service
+    from app.services.search import LocalSearchService
+    svc = LocalSearchService()
+    _search_service = svc
+    return svc
+
+
+def _local_embedding_service():
+    """Lazy-init a LocalEmbeddingService for LOCAL_MODE when startup_services() was not called."""
+    global _embedding_service
+    from app.services.embeddings import LocalEmbeddingService
+    svc = LocalEmbeddingService()
+    _embedding_service = svc
+    return svc
+
+
 def get_cosmos_manager():
+    if _cosmos_manager is None and get_settings().LOCAL_MODE:
+        return _local_cosmos_manager()
     return _cosmos_manager
 
 
 def get_master_repo():
-    if _cosmos_manager is None:
+    mgr = get_cosmos_manager()
+    if mgr is None:
         return None
-    return _cosmos_manager.get_master_repo()
+    return mgr.get_master_repo()
 
 
 async def get_client_memory_repo(client_name: str):
-    if _cosmos_manager is None:
+    mgr = get_cosmos_manager()
+    if mgr is None:
         return None
     client_id = client_name.lower().replace(" ", "-")
-    return await _cosmos_manager.get_client_repo(client_id, "memories")
+    return await mgr.get_client_repo(client_id, "memories")
 
 
 async def get_client_doc_index_repo(client_name: str):
-    if _cosmos_manager is None:
+    mgr = get_cosmos_manager()
+    if mgr is None:
         return None
     client_id = client_name.lower().replace(" ", "-")
-    return await _cosmos_manager.get_client_repo(client_id, "doc_index")
+    return await mgr.get_client_repo(client_id, "doc_index")
 
 
 async def get_client_analysis_repo(client_name: str):
-    if _cosmos_manager is None:
+    mgr = get_cosmos_manager()
+    if mgr is None:
         return None
     client_id = client_name.lower().replace(" ", "-")
-    return await _cosmos_manager.get_client_repo(client_id, "analyses")
+    return await mgr.get_client_repo(client_id, "analyses")
 
 
 def get_job_repo():
-    if _cosmos_manager is None:
+    mgr = get_cosmos_manager()
+    if mgr is None:
         return None
-    return _cosmos_manager.get_ingest_jobs_repo()
+    return mgr.get_ingest_jobs_repo()
 
 
 def get_search_service():
+    if _search_service is None and get_settings().LOCAL_MODE:
+        return _local_search_service()
     return _search_service
 
 
 def get_embedding_service():
+    if _embedding_service is None and get_settings().LOCAL_MODE:
+        return _local_embedding_service()
     return _embedding_service
 
 
@@ -206,17 +244,19 @@ def get_event_bus():
 
 
 async def get_client_action_items_repo(client_name: str):
-    if _cosmos_manager is None:
+    mgr = get_cosmos_manager()
+    if mgr is None:
         return None
     client_id = client_name.lower().replace(" ", "-")
-    return await _cosmos_manager.get_client_repo(client_id, "action_items")
+    return await mgr.get_client_repo(client_id, "action_items")
 
 
 async def get_client_events_repo(client_name: str):
-    if _cosmos_manager is None:
+    mgr = get_cosmos_manager()
+    if mgr is None:
         return None
     client_id = client_name.lower().replace(" ", "-")
-    return await _cosmos_manager.get_client_repo(client_id, "events")
+    return await mgr.get_client_repo(client_id, "events")
 
 
 def get_communication_access():
