@@ -228,7 +228,7 @@ class CommunicationScanner:
             if contact.lower() in lower_addresses:
                 return "contact_match"
 
-        text = f"{raw.subject} {raw.body[:200]}".lower()
+        text = f"{raw.subject} {raw.body}".lower()
         for kw in config.keywords:
             if kw.lower() in text:
                 return "keyword_match"
@@ -247,7 +247,7 @@ class CommunicationScanner:
             if contact.lower() in attendee_emails:
                 return True
 
-        text = f"{raw.subject} {raw.body[:200]}".lower()
+        text = f"{raw.subject} {raw.body}".lower()
         for kw in config.keywords:
             if kw.lower() in text:
                 return True

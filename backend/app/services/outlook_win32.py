@@ -3,6 +3,10 @@
 win32com wrapper for local Outlook access.
 All COM calls are synchronous and must be dispatched via asyncio.to_thread()
 from async callers so they don't block the event loop.
+
+Each public method calls pythoncom.CoInitialize()/CoUninitialize() because
+asyncio.to_thread runs in a ThreadPoolExecutor — those threads don't have COM
+initialized by default and will crash without it.
 """
 import logging
 from datetime import datetime, timezone
@@ -29,42 +33,59 @@ class OutlookWin32Service:
         if not _is_win32com_available():
             return False
         try:
+            import pythoncom
             import win32com.client
-            outlook = win32com.client.Dispatch("Outlook.Application")
-            _ = outlook.Session
-            return True
+            pythoncom.CoInitialize()
+            try:
+                outlook = win32com.client.Dispatch("Outlook.Application")
+                _ = outlook.Session
+                return True
+            except Exception:
+                return False
+            finally:
+                pythoncom.CoUninitialize()
         except Exception:
             return False
 
     def get_accounts(self) -> list[str]:
         """Return display names of all accounts configured in Outlook."""
+        import pythoncom
         import win32com.client
-        outlook = win32com.client.Dispatch("Outlook.Application")
-        ns = outlook.GetNamespace("MAPI")
-        names: list[str] = []
-        for i in range(1, ns.Accounts.Count + 1):
-            try:
-                names.append(ns.Accounts.Item(i).DisplayName)
-            except Exception:
-                pass
-        return names
+        pythoncom.CoInitialize()
+        try:
+            outlook = win32com.client.Dispatch("Outlook.Application")
+            ns = outlook.GetNamespace("MAPI")
+            names: list[str] = []
+            for i in range(1, ns.Accounts.Count + 1):
+                try:
+                    names.append(ns.Accounts.Item(i).DisplayName)
+                except Exception:
+                    pass
+            return names
+        finally:
+            pythoncom.CoUninitialize()
 
     def get_folders(self, account_display_name: str) -> list[str]:
         """Return top-level folder names for a given account."""
+        import pythoncom
         import win32com.client
-        outlook = win32com.client.Dispatch("Outlook.Application")
-        ns = outlook.GetNamespace("MAPI")
-        store = self._find_store(ns, account_display_name)
-        if store is None:
-            return []
-        folders: list[str] = []
-        root = store.GetRootFolder()
-        for i in range(1, root.Folders.Count + 1):
-            try:
-                folders.append(root.Folders.Item(i).Name)
-            except Exception:
-                pass
-        return folders
+        pythoncom.CoInitialize()
+        try:
+            outlook = win32com.client.Dispatch("Outlook.Application")
+            ns = outlook.GetNamespace("MAPI")
+            store = self._find_store(ns, account_display_name)
+            if store is None:
+                return []
+            folders: list[str] = []
+            root = store.GetRootFolder()
+            for i in range(1, root.Folders.Count + 1):
+                try:
+                    folders.append(root.Folders.Item(i).Name)
+                except Exception:
+                    pass
+            return folders
+        finally:
+            pythoncom.CoUninitialize()
 
     def get_emails(
         self,
@@ -72,47 +93,52 @@ class OutlookWin32Service:
         folder_name: str,
         since: datetime,
     ) -> list[RawEmail]:
+        import pythoncom
         import win32com.client
-        outlook = win32com.client.Dispatch("Outlook.Application")
-        ns = outlook.GetNamespace("MAPI")
-        store = self._find_store(ns, account_display_name)
-        if store is None:
-            logger.warning("Outlook account not found: %s", account_display_name)
-            return []
-
-        folder = self._find_folder(store.GetRootFolder(), folder_name)
-        if folder is None:
-            logger.warning("Folder not found: %s in %s", folder_name, account_display_name)
-            return []
-
-        since_str = since.strftime("%m/%d/%Y %H:%M %p")
+        pythoncom.CoInitialize()
         try:
-            items = folder.Items
-            items.Sort("[ReceivedTime]", True)
-            items = items.Restrict(f"[ReceivedTime] >= '{since_str}'")
-        except Exception as e:
-            logger.warning("Failed to filter Outlook items: %s", e)
-            return []
+            outlook = win32com.client.Dispatch("Outlook.Application")
+            ns = outlook.GetNamespace("MAPI")
+            store = self._find_store(ns, account_display_name)
+            if store is None:
+                logger.warning("Outlook account not found: %s", account_display_name)
+                return []
 
-        emails: list[RawEmail] = []
-        count = 0
-        try:
-            item = items.GetFirst()
-            while item is not None and count < 500:
-                try:
-                    if item.Class == 43:  # olMail
-                        emails.append(self._mail_to_raw(item, account_display_name, folder_name))
-                        count += 1
-                except Exception:
-                    pass
-                try:
-                    item = items.GetNext()
-                except Exception:
-                    break
-        except Exception as e:
-            logger.warning("Error iterating Outlook items: %s", e)
+            folder = self._find_folder(store.GetRootFolder(), folder_name)
+            if folder is None:
+                logger.warning("Folder not found: %s in %s", folder_name, account_display_name)
+                return []
 
-        return emails
+            since_str = since.strftime("%m/%d/%Y %H:%M %p")
+            try:
+                items = folder.Items
+                items.Sort("[ReceivedTime]", True)
+                items = items.Restrict(f"[ReceivedTime] >= '{since_str}'")
+            except Exception as e:
+                logger.warning("Failed to filter Outlook items: %s", e)
+                return []
+
+            emails: list[RawEmail] = []
+            count = 0
+            try:
+                item = items.GetFirst()
+                while item is not None and count < 500:
+                    try:
+                        if item.Class == 43:  # olMail
+                            emails.append(self._mail_to_raw(item, account_display_name, folder_name))
+                            count += 1
+                    except Exception:
+                        pass
+                    try:
+                        item = items.GetNext()
+                    except Exception:
+                        break
+            except Exception as e:
+                logger.warning("Error iterating Outlook items: %s", e)
+
+            return emails
+        finally:
+            pythoncom.CoUninitialize()
 
     def get_calendar_items(
         self,
@@ -120,49 +146,54 @@ class OutlookWin32Service:
         since: datetime,
         until: datetime,
     ) -> list[RawCalendarItem]:
+        import pythoncom
         import win32com.client
-        outlook = win32com.client.Dispatch("Outlook.Application")
-        ns = outlook.GetNamespace("MAPI")
-        store = self._find_store(ns, account_display_name)
-        if store is None:
-            return []
-
-        cal_folder = self._find_folder(store.GetRootFolder(), "Calendar")
-        if cal_folder is None:
-            return []
-
-        since_str = since.strftime("%m/%d/%Y %H:%M %p")
-        until_str = until.strftime("%m/%d/%Y %H:%M %p")
+        pythoncom.CoInitialize()
         try:
-            items = cal_folder.Items
-            items.IncludeRecurrences = True
-            items.Sort("[Start]")
-            items = items.Restrict(
-                f"[Start] >= '{since_str}' AND [Start] <= '{until_str}'"
-            )
-        except Exception as e:
-            logger.warning("Failed to filter calendar items: %s", e)
-            return []
+            outlook = win32com.client.Dispatch("Outlook.Application")
+            ns = outlook.GetNamespace("MAPI")
+            store = self._find_store(ns, account_display_name)
+            if store is None:
+                return []
 
-        cal_items: list[RawCalendarItem] = []
-        count = 0
-        try:
-            item = items.GetFirst()
-            while item is not None and count < 200:
-                try:
-                    if item.Class == 26:  # olAppointment
-                        cal_items.append(self._appt_to_raw(item))
-                        count += 1
-                except Exception:
-                    pass
-                try:
-                    item = items.GetNext()
-                except Exception:
-                    break
-        except Exception as e:
-            logger.warning("Error iterating calendar items: %s", e)
+            cal_folder = self._find_folder(store.GetRootFolder(), "Calendar")
+            if cal_folder is None:
+                return []
 
-        return cal_items
+            since_str = since.strftime("%m/%d/%Y %H:%M %p")
+            until_str = until.strftime("%m/%d/%Y %H:%M %p")
+            try:
+                items = cal_folder.Items
+                items.IncludeRecurrences = True
+                items.Sort("[Start]")
+                items = items.Restrict(
+                    f"[Start] >= '{since_str}' AND [Start] <= '{until_str}'"
+                )
+            except Exception as e:
+                logger.warning("Failed to filter calendar items: %s", e)
+                return []
+
+            cal_items: list[RawCalendarItem] = []
+            count = 0
+            try:
+                item = items.GetFirst()
+                while item is not None and count < 200:
+                    try:
+                        if item.Class == 26:  # olAppointment
+                            cal_items.append(self._appt_to_raw(item))
+                            count += 1
+                    except Exception:
+                        pass
+                    try:
+                        item = items.GetNext()
+                    except Exception:
+                        break
+            except Exception as e:
+                logger.warning("Error iterating calendar items: %s", e)
+
+            return cal_items
+        finally:
+            pythoncom.CoUninitialize()
 
     def create_draft(
         self,
@@ -172,27 +203,37 @@ class OutlookWin32Service:
         cc: Optional[list[str]] = None,
     ) -> str:
         """Create a draft in Outlook and return its EntryID."""
+        import pythoncom
         import win32com.client
-        outlook = win32com.client.Dispatch("Outlook.Application")
-        mail = outlook.CreateItem(0)  # olMailItem
-        mail.Subject = subject
-        mail.Body = body
-        mail.To = "; ".join(to)
-        if cc:
-            mail.CC = "; ".join(cc)
-        mail.Save()
-        return mail.EntryID
+        pythoncom.CoInitialize()
+        try:
+            outlook = win32com.client.Dispatch("Outlook.Application")
+            mail = outlook.CreateItem(0)  # olMailItem
+            mail.Subject = subject
+            mail.Body = body
+            mail.To = "; ".join(to)
+            if cc:
+                mail.CC = "; ".join(cc)
+            mail.Save()
+            return mail.EntryID
+        finally:
+            pythoncom.CoUninitialize()
 
     def update_draft(self, entry_id: str, body: str, subject: Optional[str] = None) -> None:
         """Update an existing Outlook draft by EntryID."""
+        import pythoncom
         import win32com.client
-        outlook = win32com.client.Dispatch("Outlook.Application")
-        ns = outlook.GetNamespace("MAPI")
-        mail = ns.GetItemFromID(entry_id)
-        mail.Body = body
-        if subject:
-            mail.Subject = subject
-        mail.Save()
+        pythoncom.CoInitialize()
+        try:
+            outlook = win32com.client.Dispatch("Outlook.Application")
+            ns = outlook.GetNamespace("MAPI")
+            mail = ns.GetItemFromID(entry_id)
+            mail.Body = body
+            if subject:
+                mail.Subject = subject
+            mail.Save()
+        finally:
+            pythoncom.CoUninitialize()
 
     # -- Helpers -----------------------------------------------------------
 
@@ -216,6 +257,19 @@ class OutlookWin32Service:
                 pass
         return None
 
+    def _resolve_smtp(self, address_entry) -> str:
+        """Return SMTP address from an Outlook AddressEntry, falling back to .Address."""
+        try:
+            user = address_entry.GetExchangeUser()
+            if user:
+                return user.PrimarySmtpAddress or ""
+        except Exception:
+            pass
+        try:
+            return address_entry.Address or ""
+        except Exception:
+            return ""
+
     def _mail_to_raw(self, item, account: str, folder: str) -> RawEmail:
         try:
             received = item.ReceivedTime
@@ -226,11 +280,26 @@ class OutlookWin32Service:
         except Exception:
             received_dt = datetime.now(timezone.utc)
 
+        # Resolve sender SMTP (internal Exchange accounts return a DN, not SMTP)
+        sender = ""
         try:
-            recipients = [
-                item.Recipients.Item(i).Address
-                for i in range(1, item.Recipients.Count + 1)
-            ]
+            smtp = item.SenderEmailAddress or ""
+            if "@" in smtp:
+                sender = smtp
+            else:
+                sender = self._resolve_smtp(item.Sender) or getattr(item, "SenderName", "") or smtp
+        except Exception:
+            sender = getattr(item, "SenderName", "") or ""
+
+        try:
+            recipients = []
+            for i in range(1, item.Recipients.Count + 1):
+                r = item.Recipients.Item(i)
+                addr = r.Address or ""
+                if "@" not in addr:
+                    addr = self._resolve_smtp(r.AddressEntry) or r.Name or addr
+                if addr:
+                    recipients.append(addr)
         except Exception:
             recipients = []
 
@@ -245,7 +314,7 @@ class OutlookWin32Service:
         return RawEmail(
             message_id=getattr(item, "EntryID", "") or "",
             subject=getattr(item, "Subject", "") or "",
-            sender=getattr(item, "SenderEmailAddress", "") or "",
+            sender=sender,
             recipients=recipients,
             body=getattr(item, "Body", "") or "",
             received_at=received_dt,
@@ -273,10 +342,13 @@ class OutlookWin32Service:
         try:
             for i in range(1, item.Recipients.Count + 1):
                 r = item.Recipients.Item(i)
+                addr = getattr(r, "Address", "") or ""
+                if "@" not in addr:
+                    addr = self._resolve_smtp(r.AddressEntry) or r.Name or addr
                 status_map = {0: "none", 1: "none", 2: "tentative", 3: "accepted", 4: "declined", 5: "none"}
                 attendees.append(MeetingAttendee(
                     name=getattr(r, "Name", "") or "",
-                    email=getattr(r, "Address", "") or "",
+                    email=addr,
                     response_status=status_map.get(getattr(r, "MeetingResponseStatus", 0), "none"),
                 ))
         except Exception:
