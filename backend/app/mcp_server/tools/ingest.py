@@ -5,6 +5,39 @@ from app.dependencies import get_client_doc_index_repo, get_embedding_service, g
 from app.models.source import IngestJob
 
 
+async def get_ingest_status(arguments: dict) -> dict:
+    """Return the current status of a background ingestion job."""
+    job_id = arguments.get("job_id", "")
+    if not job_id:
+        return {"error": "job_id is required"}
+
+    job_repo = get_job_repo()
+    if job_repo is None:
+        return {"error": "Job repository not available"}
+
+    try:
+        results = await job_repo.query(
+            "SELECT * FROM c WHERE c.id = @id",
+            [{"name": "@id", "value": job_id}],
+        )
+        if not results:
+            return {"error": f"No job found with id '{job_id}'"}
+        job = results[0]
+        return {
+            "job_id": job.get("id"),
+            "status": job.get("status", "unknown"),
+            "client_name": job.get("client_name"),
+            "mode": job.get("mode"),
+            "files_processed": job.get("files_processed", 0),
+            "files_total": job.get("files_total", 0),
+            "error": job.get("error"),
+            "created_at": job.get("created_at"),
+            "updated_at": job.get("updated_at"),
+        }
+    except Exception as exc:
+        return {"error": str(exc)}
+
+
 async def ingest_documents(arguments: dict) -> dict:
     client_name = arguments.get("client_name", "")
     mode = arguments.get("mode", "incremental")

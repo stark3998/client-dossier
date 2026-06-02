@@ -8,12 +8,16 @@ from app.models.mcp_server import MCPServerConfig
 logger = logging.getLogger(__name__)
 
 
+_BUILTIN_SERVER_ID = "__local__"
+
+
 class MCPManager:
     def __init__(self, kernel, cosmos_manager):
         self._kernel = kernel
         self._cosmos_manager = cosmos_manager
         self._servers: dict[str, MCPServerConfig] = {}
         self._plugins: dict[str, DynamicMCPPlugin] = {}
+        self._builtin: MCPServerConfig | None = None
 
     async def load_saved_servers(self):
         """Load all saved MCP server configs from master DB and register them."""
@@ -56,9 +60,12 @@ class MCPManager:
             config.last_error = str(e)
             logger.warning("MCP server '%s' failed to connect: %s", config.name, e)
 
-        # Register with kernel using sanitized plugin name
+        # Register with kernel — use per-tool named functions when tools are available
         plugin_name = f"MCP_{config.name.replace(' ', '_').replace('-', '_')}"
-        self._kernel.add_plugin(plugin, plugin_name=plugin_name)
+        if plugin.tools:
+            plugin.register_per_tool_functions(self._kernel, plugin_name)
+        else:
+            self._kernel.add_plugin(plugin, plugin_name=plugin_name)
 
         self._servers[config.id] = config
         self._plugins[config.id] = plugin
@@ -73,6 +80,13 @@ class MCPManager:
 
         logger.info("MCP server registered: %s (%s)", config.name, config.status)
         return config
+
+    def set_builtin_server(self, config: MCPServerConfig) -> None:
+        """Register the local built-in MCP server for UI display only (not wired to SK kernel)."""
+        config.builtin = True
+        config.status = "connected"
+        self._builtin = config
+        logger.info("Built-in MCP server registered for UI display: %s", config.name)
 
     async def unregister_server(self, server_id: str) -> None:
         """Remove an MCP server from the kernel and delete from DB."""
@@ -110,14 +124,23 @@ class MCPManager:
             return {"status": "error", "message": str(e)}
 
     def list_servers(self) -> list[dict]:
-        """List all registered servers with their status."""
-        return [
+        """List all registered servers with their status (builtin first)."""
+        result = []
+        if self._builtin:
+            from app.mcp_server.server import TOOL_DEFINITIONS
+            result.append({
+                **self._builtin.model_dump(mode="json"),
+                "plugin_registered": False,
+                "tool_count": len(TOOL_DEFINITIONS),
+            })
+        result.extend(
             {
                 **config.model_dump(mode="json"),
                 "plugin_registered": sid in self._plugins,
             }
             for sid, config in self._servers.items()
-        ]
+        )
+        return result
 
     def get_server(self, server_id: str) -> Optional[MCPServerConfig]:
         return self._servers.get(server_id)

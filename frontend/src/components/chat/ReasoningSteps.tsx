@@ -27,9 +27,14 @@ function StepContent({ step }: { step: AgentReasoningStep }) {
     case 'tool_call':
       return (
         <div>
-          <span className="text-xs font-medium text-accent-blue">
-            Tool: {step.tool_name}
-          </span>
+          <div className="flex items-center gap-1.5">
+            <span className="text-xs font-medium text-accent-blue">
+              Tool: {step.tool_name}
+            </span>
+            {step.tool_source === 'mcp' && (
+              <span className="text-[9px] px-1.5 py-0.5 bg-accent-blue/10 text-accent-blue rounded font-medium">MCP</span>
+            )}
+          </div>
           {step.tool_args && (
             <pre className="text-[10px] text-text-muted mt-0.5 overflow-x-auto">
               {JSON.stringify(step.tool_args, null, 2)}

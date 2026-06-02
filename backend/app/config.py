@@ -36,6 +36,7 @@ class Settings(BaseSettings):
     ENTRA_TENANT_ID: str = ""
     LOCAL_MODE: bool = False
     BYPASS_AUTH: bool = False  # Skip JWT validation without switching to local stubs
+    MCP_API_KEY: str = ""  # If set, accepted as Bearer token on all MCP routes without JWT
 
     # Pipeline features
     RERANK_ENABLED: bool = True

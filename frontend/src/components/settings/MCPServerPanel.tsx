@@ -1,14 +1,20 @@
 // frontend/src/components/settings/MCPServerPanel.tsx
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useMCPServers } from '@/hooks/useMCPServers';
 import { useClientStore } from '@/stores/clientStore';
-import { VscClose, VscAdd, VscPass, VscTrash, VscPackage } from 'react-icons/vsc';
+import { VscClose, VscAdd, VscPass, VscTrash, VscPackage, VscServer } from 'react-icons/vsc';
 import { MCP_PRESETS, type MCPPreset } from '@/data/mcpPresets';
 
 export function MCPServerPanel() {
   const { showMCPPanel, setShowMCPPanel } = useClientStore();
   const { servers, addServer, removeServer, testServer, loading } = useMCPServers();
+  const [builtinToolCount, setBuiltinToolCount] = useState<number | null>(null);
   const [showAdd, setShowAdd] = useState(false);
+
+  useEffect(() => {
+    if (!showMCPPanel) return;
+    fetch('/mcp/tools').then(r => r.json()).then(d => setBuiltinToolCount(d.count ?? null)).catch(() => {});
+  }, [showMCPPanel]);
   const [showPresets, setShowPresets] = useState(false);
   const [name, setName] = useState('');
   const [endpoint, setEndpoint] = useState('');
@@ -208,13 +214,31 @@ export function MCPServerPanel() {
             </div>
           )}
 
-          {/* Server list */}
+          {/* Built-in server (always shown) */}
+          <div className="p-3 border border-accent-blue/30 bg-accent-blue/5 rounded-md">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <VscServer size={14} className="text-accent-blue shrink-0" />
+                <span className="text-xs font-medium text-text-primary">Built-in MCP Server</span>
+                <span className="text-[9px] px-1 py-0.5 bg-accent-blue/10 text-accent-blue rounded">SSE</span>
+              </div>
+              <span className="text-[10px] text-green-400 font-medium">● Connected</span>
+            </div>
+            <div className="text-[10px] text-text-muted mt-1 truncate">
+              {window.location.origin}/mcp/sse
+            </div>
+            <div className="text-[10px] text-text-secondary mt-0.5">
+              {builtinToolCount !== null ? `${builtinToolCount} tools` : 'Loading tools…'} · This application's own MCP server
+            </div>
+          </div>
+
+          {/* User-configured server list */}
           {loading ? (
             <div className="text-xs text-text-muted">Loading servers...</div>
-          ) : servers.length === 0 ? (
-            <div className="text-xs text-text-muted text-center py-4">No MCP servers configured</div>
+          ) : servers.filter(s => !s.builtin).length === 0 ? (
+            <div className="text-xs text-text-muted text-center py-4">No external MCP servers configured</div>
           ) : (
-            servers.map((s) => (
+            servers.filter(s => !s.builtin).map((s) => (
               <div key={s.id} className="p-3 bg-bg-secondary rounded-md">
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-2">

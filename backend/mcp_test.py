@@ -4,7 +4,9 @@ async def run_e2e():
     from mcp.client.session import ClientSession
     from mcp.client.sse import sse_client
 
-    async with sse_client("http://localhost:8000/mcp/sse", headers={"Authorization": "Bearer local"}) as (read, write):
+    import os
+    key = os.environ.get("MCP_API_KEY", "43c4db7622a346ae55f0b5ee908a6773b9004bdfd085f2e64f62aea3d9d4a642")
+    async with sse_client("http://localhost:8000/mcp/sse", headers={"Authorization": f"Bearer {key}"}) as (read, write):
         async with ClientSession(read, write) as session:
             await session.initialize()
             tools = await session.list_tools()
@@ -23,6 +25,8 @@ async def run_e2e():
                 ("get_action_items",           {"client_name": "AcmeCorp", "status": "open"}),
                 ("get_client_health",          {"client_name": "AcmeCorp"}),
                 ("generate_briefing",          {"client_name": "AcmeCorp"}),
+                ("get_clients",                {}),
+                ("get_ingest_status",          {"job_id": "test-job-does-not-exist"}),
             ]
 
             for tool_name, args in tests:

@@ -198,6 +198,9 @@ export function AppShell() {
           <span>gpt-4o</span>
         </div>
         <div className="flex items-center gap-2 cursor-pointer" onClick={() => useClientStore.getState().setShowMCPPanel(true)}>
+          <span className="px-2 py-0.5 rounded text-[10px] bg-accent-blue/10 text-accent-blue" title="Built-in MCP Server · Connected">
+            ● Built-in
+          </span>
           {mcpServers.map((s) => (
             <span key={s.name} className={`px-2 py-0.5 rounded text-[10px] ${s.connected ? 'bg-accent/20 text-accent' : 'bg-border-default text-text-muted'}`}>
               {s.name}

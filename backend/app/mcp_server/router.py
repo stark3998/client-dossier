@@ -3,7 +3,7 @@ import logging
 from fastapi import APIRouter, Request
 from mcp.server.sse import SseServerTransport
 
-from app.mcp_server.server import TOOL_DEFINITIONS, _caller_identity, mcp_server
+from app.mcp_server.server import TOOL_CATEGORIES, TOOL_DEFINITIONS, _caller_identity, mcp_server
 
 logger = logging.getLogger(__name__)
 
@@ -49,10 +49,12 @@ async def message_endpoint(request: Request) -> None:
 @mcp_router.get("/tools")
 async def list_tools_endpoint() -> dict:
     """Return tool manifest for agent discovery. Unauthenticated."""
-    return {
-        "tools": [t.model_dump() for t in TOOL_DEFINITIONS],
-        "count": len(TOOL_DEFINITIONS),
-    }
+    tools = []
+    for t in TOOL_DEFINITIONS:
+        td = t.model_dump()
+        td["category"] = TOOL_CATEGORIES.get(t.name, "General")
+        tools.append(td)
+    return {"tools": tools, "count": len(tools)}
 
 
 @mcp_router.get("/health")

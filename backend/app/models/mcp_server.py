@@ -16,6 +16,7 @@ class MCPServerConfig(BaseModel):
     capabilities: list[str] = []
     protocol: str = "rest"  # "rest" (custom HTTP) or "sse" (standard MCP over SSE)
     enabled: bool = True
+    builtin: bool = False  # True for the local built-in server — never deleted or persisted
     status: str = "unknown"
     last_error: Optional[str] = None
     created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))

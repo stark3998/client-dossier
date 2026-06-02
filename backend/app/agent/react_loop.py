@@ -73,11 +73,13 @@ async def run_react_loop(
         for fc in function_calls:
             tool_name = f"{fc.plugin_name}.{fc.function_name}" if fc.plugin_name else fc.function_name
             args = fc.arguments or {}
+            tool_source = "mcp" if (fc.plugin_name or "").startswith("MCP_") else None
 
             yield StreamEvent(
                 type="tool_call",
                 tool_name=tool_name,
                 tool_args=args,
+                tool_source=tool_source,
                 content=f"Calling {tool_name}",
             )
 
@@ -89,6 +91,7 @@ async def run_react_loop(
                 yield StreamEvent(
                     type="tool_result",
                     tool_name=tool_name,
+                    tool_source=tool_source,
                     content=display,
                 )
             except Exception as e:
@@ -96,6 +99,7 @@ async def run_react_loop(
                 yield StreamEvent(
                     type="tool_result",
                     tool_name=tool_name,
+                    tool_source=tool_source,
                     content=f"Error: {e}",
                 )
 

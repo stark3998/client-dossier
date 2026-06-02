@@ -20,6 +20,7 @@ export interface AgentReasoningStep {
   content: string;
   tool_name?: string;
   tool_args?: Record<string, unknown>;
+  tool_source?: string; // "mcp" for MCP plugin calls
   step_number?: number;
   step_total?: number;
   plan_steps?: string[];
@@ -89,6 +90,7 @@ export interface WSMessage {
   message?: string;
   tool_name?: string;
   tool_args?: Record<string, unknown>;
+  tool_source?: string;
   step_number?: number;
   step_total?: number;
   plan_steps?: string[];
@@ -213,9 +215,23 @@ export interface MCPServerConfig {
   description: string;
   auth_type: string;
   capabilities: string[];
+  protocol?: string;
   enabled: boolean;
+  builtin?: boolean;
+  tool_count?: number;
   status: string;
   last_error?: string;
+}
+
+export interface MCPTool {
+  name: string;
+  description: string;
+  category: string;
+  inputSchema: {
+    type: string;
+    properties: Record<string, { type: string; description?: string; default?: unknown; enum?: string[] }>;
+    required?: string[];
+  };
 }
 
 // ── Tools/Skills ────────────────────────────────────────────────

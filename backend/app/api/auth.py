@@ -29,6 +29,15 @@ class AuthMiddleware(BaseHTTPMiddleware):
 
         settings = get_settings()
 
+        # MCP API key: only applies to /mcp/* routes. Backend API routes use JWT / LOCAL_MODE instead.
+        if path.startswith("/mcp/") and settings.MCP_API_KEY:
+            auth_header = request.headers.get("Authorization", "")
+            if auth_header == f"Bearer {settings.MCP_API_KEY}":
+                request.state.user = LOCAL_USER
+                return await call_next(request)
+            return JSONResponse(status_code=401, content={"detail": "Invalid API key"})
+
+        # All non-MCP routes: LOCAL_MODE / BYPASS_AUTH / JWT
         if settings.LOCAL_MODE or settings.BYPASS_AUTH:
             request.state.user = LOCAL_USER
             return await call_next(request)

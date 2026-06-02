@@ -93,8 +93,22 @@ async def startup_services():
 
     # MCP Manager (dynamic server management)
     from app.services.mcp_manager import MCPManager
+    from app.models.mcp_server import MCPServerConfig
     _mcp_manager = MCPManager(kernel, _cosmos_manager)
     await _mcp_manager.load_saved_servers()
+
+    # Register the local built-in MCP server for UI display (not wired to SK kernel to avoid tool duplication)
+    _mcp_manager.set_builtin_server(MCPServerConfig(
+        id="__local__",
+        name="Built-in MCP Server",
+        endpoint=f"http://localhost:{settings.BACKEND_PORT}/mcp/sse",
+        description="This application's own MCP server — 14 built-in tools",
+        protocol="sse",
+        auth_type="bearer",
+        auth_config={"token": settings.MCP_API_KEY} if settings.MCP_API_KEY else {},
+        builtin=True,
+        enabled=True,
+    ))
 
     # Tool manager (custom tools from Cosmos + kernel functions)
     from app.services.tool_manager import ToolManager

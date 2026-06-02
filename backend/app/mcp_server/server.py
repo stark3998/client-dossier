@@ -13,6 +13,24 @@ _caller_identity: ContextVar[dict] = ContextVar("mcp_caller_identity", default={
 
 mcp_server = Server("client-agent")
 
+# Maps tool name → UI category for the ToolBrowser grouping
+TOOL_CATEGORIES: dict[str, str] = {
+    "search_client_documents": "Search & Documents",
+    "ingest_documents": "Search & Documents",
+    "list_indexed_files": "Search & Documents",
+    "get_ingest_status": "Search & Documents",
+    "read_client_memory": "Client Intelligence",
+    "write_client_memory": "Client Intelligence",
+    "generate_insights": "Client Intelligence",
+    "get_client_health": "Client Intelligence",
+    "get_clients": "Client Intelligence",
+    "get_engagements": "Engagements",
+    "get_action_items": "Engagements",
+    "get_client_timeline": "Engagements",
+    "get_client_communications": "Communications",
+    "generate_briefing": "Reporting",
+}
+
 TOOL_DEFINITIONS: list[Tool] = [
     Tool(
         name="search_client_documents",
@@ -253,6 +271,25 @@ TOOL_DEFINITIONS: list[Tool] = [
             "required": ["client_name"],
         },
     ),
+    Tool(
+        name="get_clients",
+        description="List all clients known to the system with their IDs and names.",
+        inputSchema={"type": "object", "properties": {}},
+    ),
+    Tool(
+        name="get_ingest_status",
+        description=(
+            "Check the current status of a background document ingestion job. "
+            "Use the job_id returned by ingest_documents."
+        ),
+        inputSchema={
+            "type": "object",
+            "properties": {
+                "job_id": {"type": "string", "description": "Job ID from ingest_documents"},
+            },
+            "required": ["job_id"],
+        },
+    ),
 ]
 
 _TOOL_DISPATCH: dict = {}
@@ -260,7 +297,7 @@ _TOOL_DISPATCH: dict = {}
 
 def _build_dispatch() -> None:
     from app.mcp_server.tools.search import search_client_documents
-    from app.mcp_server.tools.ingest import ingest_documents
+    from app.mcp_server.tools.ingest import ingest_documents, get_ingest_status
     from app.mcp_server.tools.memory import read_client_memory, write_client_memory
     from app.mcp_server.tools.files import list_indexed_files
     from app.mcp_server.tools.insights import generate_insights
@@ -270,10 +307,12 @@ def _build_dispatch() -> None:
     from app.mcp_server.tools.action_items import get_action_items
     from app.mcp_server.tools.client_health import get_client_health
     from app.mcp_server.tools.briefing import generate_briefing
+    from app.mcp_server.tools.clients import get_clients
 
     _TOOL_DISPATCH.update({
         "search_client_documents": search_client_documents,
         "ingest_documents": ingest_documents,
+        "get_ingest_status": get_ingest_status,
         "read_client_memory": read_client_memory,
         "write_client_memory": write_client_memory,
         "list_indexed_files": list_indexed_files,
@@ -284,7 +323,21 @@ def _build_dispatch() -> None:
         "get_action_items": get_action_items,
         "get_client_health": get_client_health,
         "generate_briefing": generate_briefing,
+        "get_clients": get_clients,
     })
+
+
+async def dispatch_tool(name: str, arguments: dict) -> dict:
+    """Call a built-in MCP tool directly (bypasses SSE transport)."""
+    if not _TOOL_DISPATCH:
+        _build_dispatch()
+    handler = _TOOL_DISPATCH.get(name)
+    if handler is None:
+        return {"error": {"code": "NOT_FOUND", "message": f"Unknown tool: {name}"}}
+    try:
+        return await handler(arguments)
+    except Exception as exc:
+        return {"error": {"code": "INTERNAL_ERROR", "message": str(exc)}}
 
 
 @mcp_server.list_tools()

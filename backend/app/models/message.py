@@ -38,6 +38,7 @@ class StreamEvent(BaseModel):
     message: Optional[str] = None
     tool_name: Optional[str] = None
     tool_args: Optional[dict] = None
+    tool_source: Optional[str] = None  # "mcp" for MCP plugin calls, None for SK plugins
     step_number: Optional[int] = None
     step_total: Optional[int] = None
     plan_steps: Optional[list[str]] = None

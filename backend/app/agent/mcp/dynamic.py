@@ -173,3 +173,36 @@ class DynamicMCPPlugin(MCPPluginBase):
     )
     async def list_tools(self) -> str:
         return json.dumps(self._tools, indent=2)
+
+    @property
+    def tools(self) -> list[dict]:
+        return self._tools
+
+    def register_per_tool_functions(self, kernel, plugin_name: str) -> None:
+        """Register one SK kernel function per discovered MCP tool for richer agent reasoning."""
+        for tool in self._tools:
+            t_name = tool["name"]
+            t_desc = tool.get("description", "")
+
+            # Enrich description with parameter list so the LLM knows the JSON schema
+            schema = tool.get("inputSchema", {})
+            props = schema.get("properties", {})
+            req = set(schema.get("required", []))
+            if props:
+                param_lines = [
+                    f"  {k} ({v.get('type', 'any')}{'*' if k in req else ''}): {v.get('description', k)}"
+                    for k, v in props.items()
+                ]
+                t_desc = f"{t_desc}\nParams (pass as JSON):\n" + "\n".join(param_lines)
+
+            plugin_self = self  # explicit capture for closure correctness
+
+            async def _handler(arguments_json: str = "{}", _n=t_name, _p=plugin_self) -> str:
+                return await _p.invoke_tool(_n, arguments_json)
+
+            _handler.__name__ = t_name
+            decorated = kernel_function(name=t_name, description=t_desc)(_handler)
+            try:
+                kernel.add_function(plugin_name=plugin_name, function=decorated)
+            except Exception as e:
+                logger.debug("Per-tool function '%s' not registered: %s", t_name, e)

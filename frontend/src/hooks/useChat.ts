@@ -44,6 +44,7 @@ export function useChat() {
           content: msg.content || '',
           tool_name: msg.tool_name,
           tool_args: msg.tool_args,
+          tool_source: msg.tool_source,
           step_number: msg.step_number,
           step_total: msg.step_total,
           plan_steps: msg.plan_steps,
