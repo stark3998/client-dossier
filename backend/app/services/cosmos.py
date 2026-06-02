@@ -142,6 +142,18 @@ class CosmosClientManager:
         await db.create_container_if_not_exists(
             id="action_items", partition_key=PartitionKey(path="/engagement_id")
         )
+        await db.create_container_if_not_exists(
+            id="emails", partition_key=PartitionKey(path="/client_name")
+        )
+        await db.create_container_if_not_exists(
+            id="meetings", partition_key=PartitionKey(path="/client_name")
+        )
+        await db.create_container_if_not_exists(
+            id="draft_replies", partition_key=PartitionKey(path="/client_name")
+        )
+        await db.create_container_if_not_exists(
+            id="communication_config", partition_key=PartitionKey(path="/id")
+        )
         self._client_dbs[db_name] = db
         logger.info("Client database ensured: %s", db_name)
 
@@ -244,6 +256,10 @@ class LocalCosmosClientManager:
             interactions = LocalCosmosRepository(f"client_{client_id}_interactions")
             events = LocalCosmosRepository(f"client_{client_id}_events")
             action_items = LocalCosmosRepository(f"client_{client_id}_action_items")
+            emails = LocalCosmosRepository(f"client_{client_id}_emails")
+            meetings = LocalCosmosRepository(f"client_{client_id}_meetings")
+            draft_replies = LocalCosmosRepository(f"client_{client_id}_draft_replies")
+            communication_config = LocalCosmosRepository(f"client_{client_id}_communication_config")
             await memories.initialize()
             await doc_index.initialize()
             await analyses.initialize()
@@ -254,6 +270,10 @@ class LocalCosmosClientManager:
             await interactions.initialize()
             await events.initialize()
             await action_items.initialize()
+            await emails.initialize()
+            await meetings.initialize()
+            await draft_replies.initialize()
+            await communication_config.initialize()
             self._client_repos[client_id] = {
                 "memories": memories,
                 "doc_index": doc_index,
@@ -265,6 +285,10 @@ class LocalCosmosClientManager:
                 "interactions": interactions,
                 "events": events,
                 "action_items": action_items,
+                "emails": emails,
+                "meetings": meetings,
+                "draft_replies": draft_replies,
+                "communication_config": communication_config,
             }
 
     async def get_client_repo(self, client_id: str, container_name: str) -> LocalCosmosRepository:

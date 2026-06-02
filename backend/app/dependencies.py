@@ -14,10 +14,12 @@ _tool_manager = None
 _mcp_manager = None
 _event_bus = None
 _alert_checker = None
+_communication_access = None
+_communication_scanner = None
 
 
 async def startup_services():
-    global _cosmos_manager, _search_service, _embedding_service, _planner, _watcher, _tool_manager, _mcp_manager, _event_bus, _alert_checker
+    global _cosmos_manager, _search_service, _embedding_service, _planner, _watcher, _tool_manager, _mcp_manager, _event_bus, _alert_checker, _communication_access, _communication_scanner
 
     settings = get_settings()
     logger.info("Initializing services (LOCAL_MODE=%s)", settings.LOCAL_MODE)
@@ -58,6 +60,22 @@ async def startup_services():
     rewriter = QueryRewriter(kernel, _embedding_service)
     search_plugin.set_rewriter(rewriter)
 
+    # Communication services (win32com + Graph API)
+    from app.services.outlook_win32 import OutlookWin32Service
+    from app.services.graph_api_service import GraphAPIService
+    from app.services.communication_access import CommunicationAccess
+    _win32 = OutlookWin32Service()
+    _graph = GraphAPIService(
+        client_id=settings.GRAPH_CLIENT_ID,
+        tenant_id=settings.GRAPH_TENANT_ID,
+        client_secret=settings.GRAPH_CLIENT_SECRET,
+        user_email=settings.GRAPH_USER_EMAIL,
+    )
+    _communication_access = CommunicationAccess(_win32, _graph)
+
+    from app.agent.communication_plugin import CommunicationPlugin
+    comm_plugin = CommunicationPlugin(_cosmos_manager, _communication_access)
+
     plugins = {
         "Search": search_plugin,
         "Memory": MemoryPlugin(_cosmos_manager),
@@ -66,6 +84,7 @@ async def startup_services():
         "Engagements": EngagementPlugin(_cosmos_manager, _event_bus),
         "Reporting": ReportingPlugin(_cosmos_manager),
         "WebSearch": WebSearchPlugin(settings),
+        "Communication": comm_plugin,
     }
 
     from app.agent.planner import AgentPlanner
@@ -86,6 +105,13 @@ async def startup_services():
     _alert_checker = AlertChecker(_cosmos_manager, _event_bus)
     await _alert_checker.start(interval_seconds=900)
 
+    # Communication scanner (email + calendar background polling)
+    from app.agent.communication_scanner import CommunicationScanner
+    _communication_scanner = CommunicationScanner(
+        _cosmos_manager, _communication_access, kernel, _event_bus
+    )
+    await _communication_scanner.start(interval_seconds=settings.COMM_SCAN_INTERVAL)
+
     # Subscribe notification manager to event bus for WebSocket push
     from app.api.notifications import notification_manager
     _event_bus.subscribe(notification_manager.broadcast)
@@ -101,7 +127,9 @@ async def startup_services():
 
 
 async def shutdown_services():
-    global _watcher, _alert_checker
+    global _watcher, _alert_checker, _communication_scanner
+    if _communication_scanner:
+        await _communication_scanner.stop()
     if _alert_checker:
         await _alert_checker.stop()
     if _watcher:
@@ -188,3 +216,11 @@ async def get_client_events_repo(client_name: str):
         return None
     client_id = client_name.lower().replace(" ", "-")
     return await _cosmos_manager.get_client_repo(client_id, "events")
+
+
+def get_communication_access():
+    return _communication_access
+
+
+def get_communication_scanner():
+    return _communication_scanner

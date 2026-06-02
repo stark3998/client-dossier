@@ -6,6 +6,7 @@ import { ProjectTracker } from '@/components/insights/ProjectTracker';
 import { RiskRegister } from '@/components/insights/RiskRegister';
 import { InteractionTimeline } from '@/components/insights/InteractionTimeline';
 import { AnalysisResults } from '@/components/insights/AnalysisResults';
+import { CommunicationView } from '@/components/communication/CommunicationView';
 
 export default function App() {
   return (
@@ -17,6 +18,7 @@ export default function App() {
         <Route path="/clients/:clientName/risks" element={<RiskRegister />} />
         <Route path="/clients/:clientName/timeline" element={<InteractionTimeline />} />
         <Route path="/clients/:clientName/analysis" element={<AnalysisResults />} />
+        <Route path="/clients/:clientName/communications" element={<CommunicationView />} />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
     </BrowserRouter>

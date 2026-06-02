@@ -53,6 +53,17 @@ class Settings(BaseSettings):
     ALERT_RISK_THRESHOLD: int = 15
     ALERT_STALE_DAYS: int = 14
 
+    # Communication scanning
+    COMM_SCAN_INTERVAL: int = 900          # seconds between email/calendar scans
+    COMM_DRAFT_LOOKBACK_DAYS: int = 7      # how far back to scan for emails needing reply
+    COMM_MEETING_LOOKBACK_DAYS: int = 30   # calendar lookback window
+
+    # Microsoft Graph API (email/Teams fallback + Teams features)
+    GRAPH_CLIENT_ID: str = ""
+    GRAPH_TENANT_ID: str = ""
+    GRAPH_USER_EMAIL: str = ""             # mailbox UPN to read (delegated flow)
+    GRAPH_CLIENT_SECRET: str = ""          # populated from Key Vault in production
+
     # App
     FRONTEND_URL: str = "http://localhost:5173"
     BACKEND_PORT: int = 8000

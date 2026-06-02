@@ -1,4 +1,5 @@
 // frontend/src/components/layout/InsightsPanel.tsx
+import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useInsights } from '@/hooks/useInsights';
 import { useEngagements } from '@/hooks/useEngagements';
@@ -9,6 +10,8 @@ import { InsightsSummary } from '@/components/insights/InsightsSummary';
 import { StakeholderList } from '@/components/insights/StakeholderList';
 import { ActionItems } from '@/components/insights/ActionItems';
 import { VscArrowRight } from 'react-icons/vsc';
+import { fetchCommSummary } from '@/hooks/useCommunication';
+import type { CommSummary } from '@/types';
 
 export function InsightsPanel() {
   const navigate = useNavigate();
@@ -17,6 +20,12 @@ export function InsightsPanel() {
   const { engagements, risks } = useEngagements();
   const { results: analyses } = useAnalysis();
   const { events } = useTimeline();
+  const [commSummary, setCommSummary] = useState<CommSummary | null>(null);
+
+  useEffect(() => {
+    if (!activeClient) return;
+    fetchCommSummary(activeClient).then(setCommSummary).catch(() => {});
+  }, [activeClient]);
 
   const clientPath = activeClient ? `/clients/${encodeURIComponent(activeClient)}` : '';
 
@@ -84,6 +93,19 @@ export function InsightsPanel() {
           subtitle={analyses.length > 0 ? `Last: ${analyses[0]?.doc_type || 'unknown'}` : 'No analyses'}
           onClick={() => navigate(`${clientPath}/analysis`)}
         />
+
+        {/* Communications summary card */}
+        <NavCard
+          title="Communications"
+          count={commSummary?.emails_last_7d ?? 0}
+          subtitle={
+            commSummary
+              ? `${commSummary.pending_drafts} draft${commSummary.pending_drafts !== 1 ? 's' : ''} · ${commSummary.upcoming_meetings} upcoming`
+              : 'Emails (7d)'
+          }
+          onClick={() => navigate(`${clientPath}/communications`)}
+          color={commSummary && commSummary.pending_drafts > 0 ? 'yellow' : undefined}
+        />
       </div>
     </div>
   );
@@ -103,7 +125,7 @@ function NavCard({ title, count, subtitle, onClick, color }: {
         <VscArrowRight size={14} className="text-text-muted group-hover:text-accent transition-colors" />
       </div>
       <div className="flex items-baseline gap-2 mt-1">
-        <span className={`text-lg font-bold ${color === 'red' ? 'text-red-400' : 'text-text-primary'}`}>{count}</span>
+        <span className={`text-lg font-bold ${color === 'red' ? 'text-red-400' : color === 'yellow' ? 'text-yellow-400' : 'text-text-primary'}`}>{count}</span>
         <span className="text-[10px] text-text-muted">{subtitle}</span>
       </div>
     </button>

@@ -341,3 +341,103 @@ export interface CommandPaletteItem {
   icon?: string;
   action: () => void;
 }
+
+// ── Communication ──────────────────────────────────────────────
+
+export interface OutlookAccount {
+  display_name: string;
+  folders: string[];
+}
+
+export interface CommunicationConfig {
+  id: string;
+  client_name: string;
+  domains: string[];
+  keywords: string[];
+  accounts: OutlookAccount[];
+  contacts: string[];
+  scan_sent: boolean;
+  auto_draft: boolean;
+  scan_interval_minutes: number;
+  updated_at?: string;
+}
+
+export interface ScannedEmail {
+  id: string;
+  client_name: string;
+  message_id: string;
+  subject: string;
+  sender: string;
+  recipients: string[];
+  body_preview: string;
+  body_full?: string;
+  received_at: string;
+  folder: string;
+  account: string;
+  thread_id?: string;
+  has_draft_reply: boolean;
+  draft_reply_id?: string;
+  attribution_reason: 'domain_match' | 'keyword_match' | 'contact_match';
+  has_attachment: boolean;
+  attachment_names: string[];
+  indexed_at: string;
+}
+
+export interface MeetingAttendee {
+  name: string;
+  email: string;
+  response_status: 'accepted' | 'declined' | 'tentative' | 'none';
+}
+
+export interface MeetingLog {
+  id: string;
+  client_name: string;
+  subject: string;
+  organizer: string;
+  attendees: MeetingAttendee[];
+  start_time: string;
+  end_time: string;
+  location: string;
+  agenda: string;
+  is_teams_meeting: boolean;
+  teams_join_url?: string;
+  online_meeting_id?: string;
+  my_response: 'accepted' | 'declined' | 'tentative' | 'none';
+  transcript_summary?: string;
+  action_items_extracted: string[];
+  indexed_at: string;
+}
+
+export interface DraftReply {
+  id: string;
+  client_name: string;
+  email_id: string;
+  subject: string;
+  to: string[];
+  cc: string[];
+  body: string;
+  status: 'pending_review' | 'edited' | 'pushed_to_outlook' | 'discarded';
+  feedback?: string;
+  created_at: string;
+  pushed_at?: string;
+  outlook_entry_id?: string;
+}
+
+export interface CommSummary {
+  emails_last_7d: number;
+  upcoming_meetings: number;
+  pending_drafts: number;
+}
+
+export interface EmailThread {
+  thread_key: string;
+  subject: string;
+  participants: string[];
+  latest_date: string;
+  latest_sender: string;
+  message_count: number;
+  has_draft_reply: boolean;
+  has_attachment: boolean;
+  attribution_reason: 'domain_match' | 'keyword_match' | 'contact_match';
+  ai_summary?: string;
+}
