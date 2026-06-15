@@ -12,6 +12,11 @@ class ChunkMetadata(BaseModel):
     page_number: Optional[int] = None
     client_name: str
     last_modified: datetime
+    doc_type: Optional[str] = None
+    engagement_names: list[str] = []
+    key_topics: list[str] = []
+    document_date: Optional[str] = None
+    deliverable_related: bool = False
 
 
 class Chunk(BaseModel):

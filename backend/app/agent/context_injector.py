@@ -6,7 +6,7 @@ from app.config import get_settings
 
 logger = logging.getLogger(__name__)
 
-TOKEN_BUDGET = 2000
+TOKEN_BUDGET = 3000
 
 
 class ContextInjector:
@@ -36,17 +36,22 @@ class ContextInjector:
         client_id = client_name.lower().replace(" ", "-")
 
         try:
-            memory, interactions, risks, action_items = await asyncio.gather(
+            memory, interactions, risks, action_items, deliverables, engagements = await asyncio.gather(
                 self._fetch_memory(client_id),
                 self._fetch_recent_interactions(client_id),
                 self._fetch_active_risks(client_id),
                 self._fetch_overdue_actions(client_id),
+                self._fetch_active_deliverables(client_id),
+                self._fetch_active_engagements(client_id),
             )
         except Exception as e:
             logger.warning("Context injection failed for %s: %s", client_name, e)
             return ""
 
-        block = self._format_context(client_name, memory, interactions, risks, action_items)
+        block = self._format_context(
+            client_name, memory, interactions, risks, action_items,
+            deliverables=deliverables, engagements=engagements,
+        )
 
         if self._count_tokens(block) > TOKEN_BUDGET:
             block = self._truncate(block)
@@ -91,7 +96,25 @@ class ContextInjector:
         except Exception:
             return []
 
-    def _format_context(self, client_name, memory, interactions, risks, overdue_actions) -> str:
+    async def _fetch_active_deliverables(self, client_id: str) -> list:
+        try:
+            repo = await self._manager.get_client_repo(client_id, "deliverables")
+            items = await repo.query(
+                "SELECT * FROM c WHERE c.status IN ('draft', 'review')", []
+            )
+            return sorted(items, key=lambda d: d.get("due_date") or "9999")[:8]
+        except Exception:
+            return []
+
+    async def _fetch_active_engagements(self, client_id: str) -> list:
+        try:
+            repo = await self._manager.get_client_repo(client_id, "engagements")
+            return await repo.query("SELECT * FROM c WHERE c.status = 'active'", [])
+        except Exception:
+            return []
+
+    def _format_context(self, client_name, memory, interactions, risks, overdue_actions,
+                        deliverables=None, engagements=None) -> str:
         parts = [f"=== CLIENT CONTEXT: {client_name} ==="]
 
         if memory:
@@ -119,6 +142,22 @@ class ContextInjector:
             parts.append(f"\nOVERDUE ACTION ITEMS ({len(overdue_actions)}):")
             for a in overdue_actions:
                 parts.append(f"- {a.get('description', '')[:80]} (due: {a.get('due_date', '?')}, owner: {a.get('owner', '?')})")
+
+        if engagements:
+            parts.append(f"\nACTIVE ENGAGEMENTS ({len(engagements)}):")
+            for e in engagements:
+                team_str = ", ".join(e.get("team", [])[:4]) or "unassigned"
+                budget = e.get("budget")
+                budget_str = f"budget: {budget}, " if budget else ""
+                parts.append(f"- [{e.get('phase', '?')}] {e.get('name', '?')} ({budget_str}team: {team_str})")
+
+        if deliverables:
+            parts.append(f"\nACTIVE DELIVERABLES ({len(deliverables)}):")
+            for d in deliverables:
+                parts.append(
+                    f"- [{d.get('status', '?')}] {d.get('title', '?')} "
+                    f"due {d.get('due_date', 'TBD')} — owner: {d.get('owner', '?')}"
+                )
 
         parts.append("===")
         return "\n".join(parts)

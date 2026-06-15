@@ -73,6 +73,20 @@ class SearchService:
             SimpleField(name="client_name", type=SearchFieldDataType.String, filterable=True),
             SimpleField(name="chunk_hash", type=SearchFieldDataType.String),
             SimpleField(name="last_modified", type=SearchFieldDataType.DateTimeOffset, sortable=True),
+            # Business metadata fields (additive — no delete/recreate required)
+            SimpleField(name="record_type", type=SearchFieldDataType.String, filterable=True),
+            SimpleField(name="doc_type", type=SearchFieldDataType.String, filterable=True),
+            SearchableField(
+                name="engagement_names",
+                type=SearchFieldDataType.Collection(SearchFieldDataType.String),
+                filterable=True,
+            ),
+            SearchableField(
+                name="key_topics",
+                type=SearchFieldDataType.Collection(SearchFieldDataType.String),
+            ),
+            SimpleField(name="document_date", type=SearchFieldDataType.String, filterable=True),
+            SimpleField(name="deliverable_related", type=SearchFieldDataType.Boolean, filterable=True),
         ]
 
         vector_search = VectorSearch(
@@ -110,7 +124,12 @@ class SearchService:
             "search_text": query_text,
             "vector_queries": [vector_query],
             "top": top,
-            "select": ["id", "content", "file_path", "file_type", "section_title", "page_number", "client_name"],
+            "select": [
+                "id", "content", "file_path", "file_type", "section_title",
+                "page_number", "client_name", "last_modified",
+                "record_type", "doc_type", "engagement_names", "key_topics",
+                "document_date", "deliverable_related",
+            ],
         }
         if filters:
             kwargs["filter"] = filters
@@ -125,6 +144,13 @@ class SearchService:
                 "section_title": result.get("section_title", ""),
                 "page_number": result.get("page_number"),
                 "client_name": result.get("client_name", ""),
+                "last_modified": result.get("last_modified", ""),
+                "record_type": result.get("record_type", "document"),
+                "doc_type": result.get("doc_type", ""),
+                "engagement_names": result.get("engagement_names") or [],
+                "key_topics": result.get("key_topics") or [],
+                "document_date": result.get("document_date", ""),
+                "deliverable_related": result.get("deliverable_related", False),
                 "score": result.get("@search.score", 0.0),
             })
         return results

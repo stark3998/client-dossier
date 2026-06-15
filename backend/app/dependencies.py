@@ -8,6 +8,7 @@ logger = logging.getLogger(__name__)
 _cosmos_manager = None
 _search_service = None
 _embedding_service = None
+_analysis_service = None
 _planner = None
 _watcher = None
 _tool_manager = None
@@ -19,7 +20,7 @@ _communication_scanner = None
 
 
 async def startup_services():
-    global _cosmos_manager, _search_service, _embedding_service, _planner, _watcher, _tool_manager, _mcp_manager, _event_bus, _alert_checker, _communication_access, _communication_scanner
+    global _cosmos_manager, _search_service, _embedding_service, _analysis_service, _planner, _watcher, _tool_manager, _mcp_manager, _event_bus, _alert_checker, _communication_access, _communication_scanner
 
     settings = get_settings()
     logger.info("Initializing services (LOCAL_MODE=%s)", settings.LOCAL_MODE)
@@ -43,6 +44,11 @@ async def startup_services():
     from app.services.embeddings import create_embedding_service
     _embedding_service = create_embedding_service()
     await _embedding_service.initialize()
+
+    # Analysis service (used by ingestion pipeline to enrich chunk metadata)
+    from app.services.analysis import AnalysisService
+    _analysis_service = AnalysisService()
+    await _analysis_service.initialize()
 
     # Agent kernel + plugins
     from app.agent.kernel import create_kernel
@@ -79,10 +85,10 @@ async def startup_services():
 
     plugins = {
         "Search": search_plugin,
-        "Memory": MemoryPlugin(_cosmos_manager),
+        "Memory": MemoryPlugin(_cosmos_manager, _search_service, _embedding_service),
         "Files": FilePlugin(),
         "DocumentGeneration": DocumentGenerationPlugin(),
-        "Engagements": EngagementPlugin(_cosmos_manager, _event_bus),
+        "Engagements": EngagementPlugin(_cosmos_manager, _event_bus, _search_service, _embedding_service),
         "Reporting": ReportingPlugin(_cosmos_manager),
         "WebSearch": WebSearchPlugin(settings),
         "Communication": comm_plugin,
@@ -239,6 +245,10 @@ def get_embedding_service():
     if _embedding_service is None and get_settings().LOCAL_MODE:
         return _local_embedding_service()
     return _embedding_service
+
+
+def get_analysis_service():
+    return _analysis_service
 
 
 def get_planner():

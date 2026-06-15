@@ -8,8 +8,10 @@ logger = logging.getLogger(__name__)
 
 
 class MemoryPlugin:
-    def __init__(self, cosmos_manager):
+    def __init__(self, cosmos_manager, search_service=None, embedding_service=None):
         self._manager = cosmos_manager
+        self._search = search_service
+        self._embeddings = embedding_service
 
     async def _get_repo(self, client_name: str):
         client_id = client_name.lower().replace(" ", "-")
@@ -107,6 +109,8 @@ class MemoryPlugin:
             "updated_at": datetime.now(timezone.utc).isoformat(),
         }
         await repo.upsert(engagement)
+        from app.agent.engagement_plugin import _index_record
+        await _index_record("engagement", engagement, client_name, self._search, self._embeddings)
         return json.dumps({"status": "created", "engagement": engagement}, default=str)
 
     @kernel_function(

@@ -1,9 +1,26 @@
 # app/agent/search_plugin.py
 import json
 import logging
+from datetime import datetime, timezone
 from semantic_kernel.functions import kernel_function
+from app.config import get_settings
 
 logger = logging.getLogger(__name__)
+
+
+def _apply_recency_boost(results: list[dict]) -> list[dict]:
+    """Boost score linearly by document recency — max +0.15 for brand-new content, 0 at 365 days."""
+    now = datetime.now(timezone.utc)
+    for r in results:
+        raw_date = r.get("last_modified") or r.get("document_date") or ""
+        try:
+            dt = datetime.fromisoformat(raw_date.replace("Z", "+00:00"))
+            age_days = max((now - dt).days, 0)
+            decay = max(0.0, 1.0 - age_days / 365)
+            r["score"] = r.get("score", 0.0) + 0.15 * decay
+        except (ValueError, TypeError, AttributeError):
+            pass
+    return results
 
 
 class SearchPlugin:
@@ -28,6 +45,9 @@ class SearchPlugin:
             query_text=query, query_vector=vector, top=max(top * 3, 20), filters=filters
         )
         results = self._search.rerank(query, candidates, top_k=top)
+        results = _apply_recency_boost(results)
+        min_score = get_settings().SEARCH_MIN_SCORE
+        results = [r for r in results if r.get("score", 0) >= min_score]
         formatted = []
         for r in results:
             formatted.append({
@@ -35,7 +55,7 @@ class SearchPlugin:
                 "file_path": r["file_path"],
                 "section_title": r.get("section_title", ""),
                 "page_number": r.get("page_number"),
-                "score": r.get("score", 0),
+                "score": round(r.get("score", 0), 4),
             })
         return json.dumps(formatted, indent=2)
 
@@ -83,12 +103,15 @@ class SearchPlugin:
 
         # Rerank the merged candidate pool
         reranked = self._search.rerank(query, merged, top_k=top)
+        reranked = _apply_recency_boost(reranked)
+        min_score = get_settings().SEARCH_MIN_SCORE
+        reranked = [r for r in reranked if r.get("score", 0) >= min_score]
 
         formatted = [{
             "content": r["content"][:500],
             "file_path": r["file_path"],
             "section_title": r.get("section_title", ""),
             "page_number": r.get("page_number"),
-            "score": r.get("score", 0),
+            "score": round(r.get("score", 0), 4),
         } for r in reranked]
         return json.dumps(formatted, indent=2)

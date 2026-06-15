@@ -21,6 +21,7 @@ async def run_ingestion(
     search_service,
     embedding_service,
     job_repo=None,
+    analysis_service=None,
     force: bool = False,
 ):
     settings = get_settings()
@@ -56,6 +57,7 @@ async def run_ingestion(
                     doc_index_repo=doc_index_repo,
                     search_service=search_service,
                     embedding_service=embedding_service,
+                    analysis_service=analysis_service,
                     force=force,
                 )
             except Exception as e:
@@ -110,6 +112,7 @@ async def _ingest_file(
     doc_index_repo,
     search_service,
     embedding_service,
+    analysis_service=None,
     force: bool = False,
 ) -> dict:
     import time
@@ -131,6 +134,27 @@ async def _ingest_file(
     # Parse (CPU-bound, offloaded to thread)
     parsed = await asyncio.to_thread(parse_document, file_path)
 
+    # Run document analysis to extract metadata for chunk enrichment
+    doc_type = None
+    engagement_names: list[str] = []
+    key_topics: list[str] = []
+    document_date = None
+    deliverable_related = False
+    if analysis_service:
+        try:
+            analysis = await analysis_service.analyze_document(parsed, client_name)
+            doc_type = analysis.doc_type
+            engagement_names = analysis.engagement_references or []
+            key_topics = analysis.key_topics or []
+            if analysis.extracted_dates:
+                date_strings = [d.date for d in analysis.extracted_dates if d.date]
+                document_date = min(date_strings) if date_strings else None
+            deliverable_related = doc_type in {
+                "proposal", "contract", "report", "status_report"
+            }
+        except Exception as e:
+            logger.warning("Analysis skipped for %s: %s", file_path, e)
+
     # Chunk (CPU-bound, offloaded to thread)
     chunks = await asyncio.to_thread(
         chunk_document,
@@ -139,6 +163,11 @@ async def _ingest_file(
         file_type=parsed.file_type,
         client_name=client_name,
         last_modified=parsed.last_modified,
+        doc_type=doc_type,
+        engagement_names=engagement_names,
+        key_topics=key_topics,
+        document_date=document_date,
+        deliverable_related=deliverable_related,
     )
 
     if not chunks:
@@ -162,6 +191,12 @@ async def _ingest_file(
             "client_name": chunk.metadata.client_name,
             "chunk_hash": chunk.chunk_hash,
             "last_modified": chunk.metadata.last_modified.isoformat(),
+            "record_type": "document",
+            "doc_type": chunk.metadata.doc_type or "",
+            "engagement_names": chunk.metadata.engagement_names,
+            "key_topics": chunk.metadata.key_topics,
+            "document_date": chunk.metadata.document_date or "",
+            "deliverable_related": chunk.metadata.deliverable_related,
         })
     await search_service.upsert_chunks(search_docs)
 

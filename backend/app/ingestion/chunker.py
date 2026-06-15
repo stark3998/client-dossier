@@ -18,21 +18,34 @@ def chunk_document(
     last_modified: datetime,
     max_tokens: int = 800,
     overlap_tokens: int = 100,
+    doc_type: str | None = None,
+    engagement_names: list[str] | None = None,
+    key_topics: list[str] | None = None,
+    document_date: str | None = None,
+    deliverable_related: bool = False,
 ) -> list[Chunk]:
     from app.config import get_settings
     settings = get_settings()
+
+    extra = dict(
+        doc_type=doc_type,
+        engagement_names=engagement_names or [],
+        key_topics=key_topics or [],
+        document_date=document_date,
+        deliverable_related=deliverable_related,
+    )
 
     # Use semantic chunking in production when embeddings are available
     if settings.SEMANTIC_CHUNKING and not settings.LOCAL_MODE:
         try:
             return _semantic_chunk_document(
-                sections, file_path, file_type, client_name, last_modified, max_tokens
+                sections, file_path, file_type, client_name, last_modified, max_tokens, **extra
             )
         except Exception as e:
             logger.warning("Semantic chunking failed, falling back to token-based: %s", e)
 
     return _token_chunk_document(
-        sections, file_path, file_type, client_name, last_modified, max_tokens, overlap_tokens
+        sections, file_path, file_type, client_name, last_modified, max_tokens, overlap_tokens, **extra
     )
 
 
@@ -43,6 +56,11 @@ def _semantic_chunk_document(
     client_name: str,
     last_modified: datetime,
     max_tokens: int,
+    doc_type: str | None = None,
+    engagement_names: list[str] | None = None,
+    key_topics: list[str] | None = None,
+    document_date: str | None = None,
+    deliverable_related: bool = False,
 ) -> list[Chunk]:
     from chonkie import SemanticChunker
     from app.services.embeddings import create_embedding_service
@@ -87,6 +105,11 @@ def _semantic_chunk_document(
                     page_number=section.page_number,
                     client_name=client_name,
                     last_modified=last_modified,
+                    doc_type=doc_type,
+                    engagement_names=engagement_names or [],
+                    key_topics=key_topics or [],
+                    document_date=document_date,
+                    deliverable_related=deliverable_related,
                 ))
         except Exception as e:
             logger.warning("Semantic chunking failed for section '%s': %s", section.title, e)
@@ -99,6 +122,11 @@ def _semantic_chunk_document(
                 page_number=section.page_number,
                 client_name=client_name,
                 last_modified=last_modified,
+                doc_type=doc_type,
+                engagement_names=engagement_names or [],
+                key_topics=key_topics or [],
+                document_date=document_date,
+                deliverable_related=deliverable_related,
             ))
     return chunks
 
@@ -111,6 +139,11 @@ def _token_chunk_document(
     last_modified: datetime,
     max_tokens: int,
     overlap_tokens: int,
+    doc_type: str | None = None,
+    engagement_names: list[str] | None = None,
+    key_topics: list[str] | None = None,
+    document_date: str | None = None,
+    deliverable_related: bool = False,
 ) -> list[Chunk]:
     import tiktoken
     enc = tiktoken.get_encoding("cl100k_base")
@@ -128,6 +161,11 @@ def _token_chunk_document(
                 page_number=section.page_number,
                 client_name=client_name,
                 last_modified=last_modified,
+                doc_type=doc_type,
+                engagement_names=engagement_names or [],
+                key_topics=key_topics or [],
+                document_date=document_date,
+                deliverable_related=deliverable_related,
             ))
         else:
             sentences = SENTENCE_PATTERN.split(section.text)
@@ -147,6 +185,11 @@ def _token_chunk_document(
                         page_number=section.page_number,
                         client_name=client_name,
                         last_modified=last_modified,
+                        doc_type=doc_type,
+                        engagement_names=engagement_names or [],
+                        key_topics=key_topics or [],
+                        document_date=document_date,
+                        deliverable_related=deliverable_related,
                     ))
                     overlap_text_parts = []
                     overlap_count = 0
@@ -172,6 +215,11 @@ def _token_chunk_document(
                     page_number=section.page_number,
                     client_name=client_name,
                     last_modified=last_modified,
+                    doc_type=doc_type,
+                    engagement_names=engagement_names or [],
+                    key_topics=key_topics or [],
+                    document_date=document_date,
+                    deliverable_related=deliverable_related,
                 ))
 
     return chunks
@@ -185,6 +233,11 @@ def _make_chunk(
     page_number: int | None,
     client_name: str,
     last_modified: datetime,
+    doc_type: str | None = None,
+    engagement_names: list[str] | None = None,
+    key_topics: list[str] | None = None,
+    document_date: str | None = None,
+    deliverable_related: bool = False,
 ) -> Chunk:
     return Chunk(
         content=content,
@@ -195,5 +248,10 @@ def _make_chunk(
             page_number=page_number,
             client_name=client_name,
             last_modified=last_modified,
+            doc_type=doc_type,
+            engagement_names=engagement_names or [],
+            key_topics=key_topics or [],
+            document_date=document_date,
+            deliverable_related=deliverable_related,
         ),
     )

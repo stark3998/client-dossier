@@ -42,6 +42,7 @@ class Settings(BaseSettings):
     RERANK_ENABLED: bool = True
     SEMANTIC_CHUNKING: bool = True
     INGEST_CONCURRENCY: int = 5
+    SEARCH_MIN_SCORE: float = 0.70
     TAVILY_API_KEY: str = ""
 
     # MCP
