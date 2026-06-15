@@ -1,17 +1,20 @@
 // frontend/src/components/ClientDashboard.tsx
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { VscAdd, VscFolder, VscArrowRight } from 'react-icons/vsc';
+import { VscAdd, VscFolder, VscArrowRight, VscWarning } from 'react-icons/vsc';
 import { useApiFetch } from '@/hooks/useApiFetch';
 import { useAuth } from '@/auth/AuthProvider';
+import { useServiceHealth } from '@/hooks/useServiceHealth';
 
 export function ClientDashboard() {
   const navigate = useNavigate();
   const { apiFetch } = useApiFetch();
   const { user } = useAuth();
   const initials = user?.name?.split(' ').map(p => p[0]).slice(0, 2).join('').toUpperCase() ?? '?';
+  const { backendOnline } = useServiceHealth();
   const [clients, setClients] = useState<string[]>([]);
   const [loading, setLoading] = useState(true);
+  const [fetchError, setFetchError] = useState<string | null>(null);
   const [showNewClient, setShowNewClient] = useState(false);
   const [newClientName, setNewClientName] = useState('');
   const [creating, setCreating] = useState(false);
@@ -23,14 +26,18 @@ export function ClientDashboard() {
 
   const fetchClients = async () => {
     setLoading(true);
+    setFetchError(null);
     try {
       const res = await apiFetch('/api/clients');
       if (res.ok) {
         const data = await res.json();
         setClients(data.clients || []);
+      } else {
+        setFetchError(`Server returned ${res.status} — check backend logs`);
       }
     } catch (err) {
       console.error('Failed to fetch clients:', err);
+      setFetchError('Could not reach the backend. Make sure the server is running on localhost:8000.');
     } finally {
       setLoading(false);
     }
@@ -74,6 +81,29 @@ export function ClientDashboard() {
           </button>
         </div>
       </header>
+
+      {backendOnline === false && (
+        <div className="bg-yellow-500/10 border-b border-yellow-500/30 px-6 py-3 flex items-center gap-2 text-yellow-400 text-sm">
+          <VscWarning size={16} className="flex-shrink-0" />
+          <span>Backend is offline. Start the server at <code className="font-mono text-xs">localhost:8000</code>.</span>
+        </div>
+      )}
+
+      {fetchError && (
+        <div className="bg-red-500/10 border-b border-red-500/30 px-6 py-3 flex items-center justify-between gap-4 text-sm">
+          <div className="flex items-center gap-2 text-red-400">
+            <VscWarning size={16} className="flex-shrink-0" />
+            <span>{fetchError}</span>
+          </div>
+          <button
+            type="button"
+            onClick={fetchClients}
+            className="text-xs font-medium text-red-400 border border-red-500/40 rounded px-2 py-1 hover:bg-red-500/10 transition-colors flex-shrink-0"
+          >
+            Retry
+          </button>
+        </div>
+      )}
 
       <main className="max-w-5xl mx-auto px-6 py-8">
         <div className="flex items-center justify-between mb-6">

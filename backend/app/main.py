@@ -20,8 +20,12 @@ logger = logging.getLogger(__name__)
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     settings = get_settings()
+    client_id_hint = f"...{settings.ENTRA_CLIENT_ID[-8:]}" if settings.ENTRA_CLIENT_ID else "(not set)"
+    tenant_id_hint = f"...{settings.ENTRA_TENANT_ID[-8:]}" if settings.ENTRA_TENANT_ID else "(not set)"
     logger.info(
-        "Starting Client Intelligence Agent (LOCAL_MODE=%s)", settings.LOCAL_MODE
+        "Starting Client Intelligence Agent | LOCAL_MODE=%s BYPASS_AUTH=%s "
+        "ENTRA_CLIENT_ID=%s ENTRA_TENANT_ID=%s",
+        settings.LOCAL_MODE, settings.BYPASS_AUTH, client_id_hint, tenant_id_hint,
     )
     # Startup: initialize services (will be wired in Phase 3)
     try:

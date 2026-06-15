@@ -1,5 +1,5 @@
 // frontend/src/hooks/useServiceHealth.ts
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { showToast } from '@/components/common/Toast';
 
 interface ServiceCheck {
@@ -18,13 +18,21 @@ const DISPLAY_ORDER = [
 ];
 
 export function useServiceHealth() {
+  // null = unknown (still loading), true = reachable, false = offline
+  const [backendOnline, setBackendOnline] = useState<boolean | null>(null);
+
   useEffect(() => {
     let cancelled = false;
 
     async function run() {
       try {
         const res = await fetch('/ready');
-        if (!res.ok || cancelled) return;
+        if (cancelled) return;
+        if (!res.ok) {
+          setBackendOnline(false);
+          return;
+        }
+        setBackendOnline(true);
         const data: ReadyResponse = await res.json();
 
         const ordered = DISPLAY_ORDER
@@ -62,11 +70,13 @@ export function useServiceHealth() {
           }, i * 150);
         });
       } catch {
-        // /ready unreachable — backend not started, silent fail
+        if (!cancelled) setBackendOnline(false);
       }
     }
 
     run();
     return () => { cancelled = true; };
   }, []);
+
+  return { backendOnline };
 }

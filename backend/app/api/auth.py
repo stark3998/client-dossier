@@ -88,7 +88,7 @@ async def _validate_token(token: str, settings) -> Optional[dict]:
             signing_key.key,
             algorithms=["RS256"],
             audience=valid_audiences,
-            options={"verify_iss": False},
+            options={"verify_iss": False, "verify_exp": True},
         )
 
         iss = decoded.get("iss", "")
