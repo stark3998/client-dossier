@@ -10,7 +10,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.config import get_settings
-from app.api import health, ingest, files, chat, insights, memory, clients, analysis, engagements, timeline, tools, mcp, action_items, client_health, notifications, briefing, communication
+from app.api import health, ingest, files, chat, insights, memory, clients, analysis, engagements, timeline, tools, mcp, action_items, client_health, notifications, briefing, communication, inbox_search
 from app.api.auth import AuthMiddleware
 from app.mcp_server.router import mcp_router
 
@@ -90,6 +90,7 @@ app.include_router(notifications.router)
 app.include_router(briefing.router)
 app.include_router(communication.router)
 app.include_router(communication.ws_router)
+app.include_router(inbox_search.router)
 app.include_router(mcp_router, prefix="/mcp")
 
 # Configure logging — force=True overrides uvicorn's pre-installed handlers

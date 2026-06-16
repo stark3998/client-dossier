@@ -483,3 +483,37 @@ export interface EmailThread {
   classification?: EmailClassification;
   ai_summary?: string;
 }
+
+export interface ParsedEmailFilters {
+  sender_name?: string | null;
+  sender_domain?: string | null;
+  date_from?: string | null;
+  date_to?: string | null;
+  folder?: string | null;
+  has_attachment?: boolean | null;
+}
+
+export interface InboxSearchResult {
+  id: string;
+  subject: string;
+  sender: string;
+  sender_name: string;
+  recipients: string[];
+  body_preview: string;
+  received_at: string | null;
+  folder: string;
+  account: string;
+  has_attachment: boolean;
+  attachment_names: string[];
+  client_name: string | null;
+  client_path: string | null;
+  relevance_score: number;
+}
+
+export interface InboxSearchResponse {
+  results: InboxSearchResult[];
+  summary: string;
+  expanded_queries: string[];
+  filters_applied: ParsedEmailFilters;
+  total_found: number;
+}

@@ -10,6 +10,7 @@ import { ChatTerminal } from '@/components/chat/ChatTerminal';
 import { MCPServerPanel } from '@/components/settings/MCPServerPanel';
 import { ToastContainer } from '@/components/common/Toast';
 import { VscLayoutSidebarLeft, VscLayoutSidebarRight, VscArrowLeft, VscMail, VscSettingsGear } from 'react-icons/vsc';
+import { GlobalSearchBar } from '@/components/search/GlobalSearchBar';
 import { BsSun, BsMoon } from 'react-icons/bs';
 
 export function AppShell() {
@@ -132,6 +133,7 @@ export function AppShell() {
           </button>
           <span className="text-sm font-bold text-accent tracking-wide">{activeClient || 'CLIENT INTELLIGENCE AGENT'}</span>
         </div>
+        <GlobalSearchBar />
         <div className="flex items-center gap-3">
           {activeClient && (
             <>
