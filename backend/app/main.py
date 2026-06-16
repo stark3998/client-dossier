@@ -92,8 +92,9 @@ app.include_router(communication.router)
 app.include_router(communication.ws_router)
 app.include_router(mcp_router, prefix="/mcp")
 
-# Configure logging
+# Configure logging — force=True overrides uvicorn's pre-installed handlers
 logging.basicConfig(
     level=getattr(logging, settings.LOG_LEVEL, logging.INFO),
     format="%(asctime)s %(name)s %(levelname)s %(message)s",
+    force=True,
 )

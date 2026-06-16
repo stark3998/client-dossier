@@ -39,8 +39,7 @@ async def plan_and_execute(
     plan_history.add_user_message(planning_prompt + user_message)
 
     plan_settings = get_execution_settings(auto_invoke=True)
-    plan_settings.max_tokens = 1024
-    plan_settings.temperature = 0.2
+    plan_settings.max_completion_tokens = 1024
 
     plan_text = ""
     response = chat_service.get_streaming_chat_message_content(

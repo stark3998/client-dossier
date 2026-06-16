@@ -97,8 +97,7 @@ class ConversationManager:
             history.add_user_message(prompt + conversation_text)
 
             settings = get_execution_settings(auto_invoke=True)
-            settings.max_tokens = 1024
-            settings.temperature = 0.2
+            settings.max_completion_tokens = 1024
 
             result = ""
             response = chat_service.get_streaming_chat_message_content(

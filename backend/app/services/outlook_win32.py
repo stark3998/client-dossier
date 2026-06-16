@@ -61,6 +61,15 @@ class OutlookWin32Service:
                     names.append(ns.Accounts.Item(i).DisplayName)
                 except Exception:
                     pass
+            logger.info("Outlook accounts found (%d): %s", len(names), names)
+            # Also log all store display names for debugging account matching
+            store_names = []
+            for i in range(1, ns.Stores.Count + 1):
+                try:
+                    store_names.append(ns.Stores.Item(i).DisplayName)
+                except Exception:
+                    pass
+            logger.info("Outlook stores (used for account matching): %s", store_names)
             return names
         finally:
             pythoncom.CoUninitialize()
@@ -75,6 +84,7 @@ class OutlookWin32Service:
             ns = outlook.GetNamespace("MAPI")
             store = self._find_store(ns, account_display_name)
             if store is None:
+                logger.warning("get_folders: no store matched account_display_name=%r", account_display_name)
                 return []
             folders: list[str] = []
             root = store.GetRootFolder()
@@ -83,6 +93,7 @@ class OutlookWin32Service:
                     folders.append(root.Folders.Item(i).Name)
                 except Exception:
                     pass
+            logger.info("Folders for account %r: %s", account_display_name, folders)
             return folders
         finally:
             pythoncom.CoUninitialize()
@@ -97,45 +108,88 @@ class OutlookWin32Service:
         import win32com.client
         pythoncom.CoInitialize()
         try:
+            logger.info(
+                "get_emails: account=%r folder=%r since=%s",
+                account_display_name, folder_name, since.isoformat()
+            )
             outlook = win32com.client.Dispatch("Outlook.Application")
             ns = outlook.GetNamespace("MAPI")
             store = self._find_store(ns, account_display_name)
             if store is None:
-                logger.warning("Outlook account not found: %s", account_display_name)
+                logger.warning(
+                    "get_emails: account not found. account_display_name=%r  "
+                    "Available stores: %s",
+                    account_display_name,
+                    [ns.Stores.Item(i).DisplayName for i in range(1, ns.Stores.Count + 1)
+                     if True],
+                )
                 return []
+            logger.debug("get_emails: matched store=%r", store.DisplayName)
 
             folder = self._find_folder(store.GetRootFolder(), folder_name)
             if folder is None:
-                logger.warning("Folder not found: %s in %s", folder_name, account_display_name)
+                available = []
+                root = store.GetRootFolder()
+                for i in range(1, root.Folders.Count + 1):
+                    try:
+                        available.append(root.Folders.Item(i).Name)
+                    except Exception:
+                        pass
+                logger.warning(
+                    "get_emails: folder %r not found in account %r. "
+                    "Available folders: %s",
+                    folder_name, account_display_name, available,
+                )
                 return []
+            logger.debug("get_emails: matched folder=%r", folder.Name)
 
             since_str = since.strftime("%m/%d/%Y %H:%M %p")
+            logger.debug("get_emails: Restrict filter string = %r", f"[ReceivedTime] >= '{since_str}'")
             try:
                 items = folder.Items
+                total_in_folder = items.Count
                 items.Sort("[ReceivedTime]", True)
                 items = items.Restrict(f"[ReceivedTime] >= '{since_str}'")
+                logger.info(
+                    "get_emails: folder %r has %d total items; applying Restrict since %s",
+                    folder_name, total_in_folder, since_str,
+                )
             except Exception as e:
-                logger.warning("Failed to filter Outlook items: %s", e)
+                logger.warning("get_emails: Failed to filter Outlook items: %s", e)
                 return []
 
             emails: list[RawEmail] = []
             count = 0
+            skipped_class = 0
+            skipped_error = 0
             try:
                 item = items.GetFirst()
                 while item is not None and count < 500:
                     try:
                         if item.Class == 43:  # olMail
-                            emails.append(self._mail_to_raw(item, account_display_name, folder_name))
+                            raw = self._mail_to_raw(item, account_display_name, folder_name)
+                            emails.append(raw)
+                            logger.debug(
+                                "get_emails: [%d] subject=%r sender=%r received=%s",
+                                count, raw.subject, raw.sender, raw.received_at.isoformat()
+                            )
                             count += 1
-                    except Exception:
-                        pass
+                        else:
+                            skipped_class += 1
+                    except Exception as e:
+                        logger.debug("get_emails: skipped item due to error: %s", e)
+                        skipped_error += 1
                     try:
                         item = items.GetNext()
                     except Exception:
                         break
             except Exception as e:
-                logger.warning("Error iterating Outlook items: %s", e)
+                logger.warning("get_emails: Error iterating Outlook items: %s", e)
 
+            logger.info(
+                "get_emails: fetched %d emails from %r/%r (skipped %d non-mail, %d errors)",
+                count, account_display_name, folder_name, skipped_class, skipped_error,
+            )
             return emails
         finally:
             pythoncom.CoUninitialize()
@@ -261,20 +315,57 @@ class OutlookWin32Service:
     # -- Helpers -----------------------------------------------------------
 
     def _find_store(self, ns, account_display_name: str):
-        for i in range(1, ns.Stores.Count + 1):
+        """Find the primary delivery store for an account.
+
+        Strategy (in order):
+        1. Match account by DisplayName via ns.Accounts, then return account.DeliveryStore.
+           This avoids accidentally matching an Online Archive or secondary store whose
+           DisplayName happens to contain the email address.
+        2. Fall back to substring match on ns.Stores DisplayName (original behaviour).
+        """
+        needle = account_display_name.lower()
+
+        # Pass 1: prefer the account's actual delivery store
+        for i in range(1, ns.Accounts.Count + 1):
             try:
-                store = ns.Stores.Item(i)
-                if account_display_name.lower() in store.DisplayName.lower():
+                acct = ns.Accounts.Item(i)
+                if needle in acct.DisplayName.lower():
+                    store = acct.DeliveryStore
+                    logger.debug(
+                        "_find_store: matched account %r → delivery store %r",
+                        account_display_name, store.DisplayName,
+                    )
                     return store
             except Exception:
                 pass
+
+        # Pass 2: fall back to substring match on all store display names
+        candidates = []
+        for i in range(1, ns.Stores.Count + 1):
+            try:
+                store = ns.Stores.Item(i)
+                candidates.append(store.DisplayName)
+                if needle in store.DisplayName.lower():
+                    logger.debug(
+                        "_find_store: fallback matched %r against store %r",
+                        account_display_name, store.DisplayName,
+                    )
+                    return store
+            except Exception:
+                pass
+
+        logger.warning(
+            "_find_store: no store matched %r. All store display names: %s",
+            account_display_name, candidates,
+        )
         return None
 
     def _find_folder(self, root_folder, folder_name: str):
+        needle = folder_name.lower()
         for i in range(1, root_folder.Folders.Count + 1):
             try:
                 folder = root_folder.Folders.Item(i)
-                if folder.Name.lower() == folder_name.lower():
+                if folder.Name.lower() == needle:
                     return folder
             except Exception:
                 pass

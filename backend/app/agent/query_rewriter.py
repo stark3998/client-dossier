@@ -31,8 +31,7 @@ class QueryRewriter:
             history.add_user_message(load_prompt("query_rewrite_prompt.txt") + query)
 
             settings = get_execution_settings(auto_invoke=True)
-            settings.max_tokens = 256
-            settings.temperature = 0.3
+            settings.max_completion_tokens = 256
 
             result_text = ""
             response = chat_service.get_streaming_chat_message_content(
@@ -93,8 +92,7 @@ class QueryRewriter:
             history.add_user_message(_HYDE_PROMPT + query)
 
             settings = get_execution_settings(auto_invoke=False)
-            settings.max_tokens = 200
-            settings.temperature = 0.5
+            settings.max_completion_tokens = 200
 
             hypothetical = ""
             async for chunk in chat_service.get_streaming_chat_message_content(

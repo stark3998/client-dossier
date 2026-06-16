@@ -1,5 +1,5 @@
 // frontend/src/components/communication/CommConfig.tsx
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { VscAdd, VscClose, VscLoading, VscSave } from 'react-icons/vsc';
 import { useCommConfig } from '../../hooks/useCommunication';
 import type { CommunicationConfig, OutlookAccount } from '../../types';
@@ -8,12 +8,23 @@ interface Props {
   clientName: string;
 }
 
-function TagInput({ tags, onChange, placeholder }: { tags: string[]; onChange: (t: string[]) => void; placeholder: string }) {
+function TagInput({
+  tags,
+  onChange,
+  placeholder,
+  onInputChange,
+}: {
+  tags: string[];
+  onChange: (t: string[]) => void;
+  placeholder: string;
+  onInputChange?: (v: string) => void;
+}) {
   const [input, setInput] = useState('');
   function add() {
     const v = input.trim();
     if (v && !tags.includes(v)) onChange([...tags, v]);
     setInput('');
+    onInputChange?.('');
   }
   return (
     <div>
@@ -31,8 +42,12 @@ function TagInput({ tags, onChange, placeholder }: { tags: string[]; onChange: (
         <input
           type="text"
           value={input}
-          onChange={(e) => setInput(e.target.value)}
+          onChange={(e) => {
+            setInput(e.target.value);
+            onInputChange?.(e.target.value);
+          }}
           onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); add(); } }}
+          onBlur={add}
           placeholder={placeholder}
           className="flex-1 px-2 py-1 text-xs bg-bg-secondary border border-border-default rounded text-text-primary placeholder:text-text-muted focus:outline-none focus:border-accent"
           aria-label={placeholder}
@@ -110,6 +125,7 @@ const DEFAULT_CONFIG: CommunicationConfig = {
   scan_sent: true,
   auto_draft: true,
   scan_interval_minutes: 15,
+  lookback_days: 0,
 };
 
 export function CommConfig({ clientName }: Props) {
@@ -118,6 +134,12 @@ export function CommConfig({ clientName }: Props) {
   const [folderCache, setFolderCache] = useState<Record<string, string[]>>({});
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
+
+  // Track any text typed in TagInputs but not yet confirmed with Enter/+.
+  // Using refs so handleSave always reads the latest value without a re-render.
+  const pendingDomain = useRef('');
+  const pendingKeyword = useRef('');
+  const pendingContact = useRef('');
 
   useEffect(() => {
     if (config) {
@@ -156,7 +178,16 @@ export function CommConfig({ clientName }: Props) {
     setSaving(true);
     setSaved(false);
     try {
-      await saveConfig(form);
+      // Flush any text typed in a TagInput that the user didn't confirm with Enter/+.
+      const flushForm = { ...form };
+      const d = pendingDomain.current.trim();
+      if (d && !flushForm.domains.includes(d)) flushForm.domains = [...flushForm.domains, d];
+      const k = pendingKeyword.current.trim();
+      if (k && !flushForm.keywords.includes(k)) flushForm.keywords = [...flushForm.keywords, k];
+      const c = pendingContact.current.trim();
+      if (c && !flushForm.contacts.includes(c)) flushForm.contacts = [...flushForm.contacts, c];
+
+      await saveConfig(flushForm);
       setSaved(true);
       setTimeout(() => setSaved(false), 2000);
     } finally {
@@ -171,19 +202,34 @@ export function CommConfig({ clientName }: Props) {
       <div className="space-y-1.5">
         <label className="text-[10px] text-text-muted uppercase tracking-wide">Email Domains</label>
         <p className="text-[10px] text-text-muted">Emails to/from these domains will be attributed to this client.</p>
-        <TagInput tags={form.domains} onChange={(t) => setField('domains', t)} placeholder="@acme.com" />
+        <TagInput
+          tags={form.domains}
+          onChange={(t) => setField('domains', t)}
+          placeholder="@acme.com"
+          onInputChange={(v) => { pendingDomain.current = v; }}
+        />
       </div>
 
       <div className="space-y-1.5">
         <label className="text-[10px] text-text-muted uppercase tracking-wide">Keywords</label>
         <p className="text-[10px] text-text-muted">Match emails containing these words in subject or body.</p>
-        <TagInput tags={form.keywords} onChange={(t) => setField('keywords', t)} placeholder="Project Phoenix" />
+        <TagInput
+          tags={form.keywords}
+          onChange={(t) => setField('keywords', t)}
+          placeholder="Project Phoenix"
+          onInputChange={(v) => { pendingKeyword.current = v; }}
+        />
       </div>
 
       <div className="space-y-1.5">
         <label className="text-[10px] text-text-muted uppercase tracking-wide">Specific Contacts</label>
         <p className="text-[10px] text-text-muted">Always attribute emails to/from these addresses to this client.</p>
-        <TagInput tags={form.contacts} onChange={(t) => setField('contacts', t)} placeholder="john.smith@acme.com" />
+        <TagInput
+          tags={form.contacts}
+          onChange={(t) => setField('contacts', t)}
+          placeholder="john.smith@acme.com"
+          onInputChange={(v) => { pendingContact.current = v; }}
+        />
       </div>
 
       <div className="space-y-1.5">
@@ -239,17 +285,31 @@ export function CommConfig({ clientName }: Props) {
         </label>
       </div>
 
-      <div className="space-y-1.5">
-        <label className="text-[10px] text-text-muted uppercase tracking-wide" htmlFor="scan-interval">Scan interval (minutes)</label>
-        <input
-          id="scan-interval"
-          type="number"
-          min={5}
-          max={1440}
-          value={form.scan_interval_minutes}
-          onChange={(e) => setField('scan_interval_minutes', Number(e.target.value))}
-          className="w-24 px-2 py-1 text-xs bg-bg-secondary border border-border-default rounded text-text-primary focus:outline-none focus:border-accent"
-        />
+      <div className="flex flex-wrap gap-6">
+        <div className="space-y-1.5">
+          <label className="text-[10px] text-text-muted uppercase tracking-wide" htmlFor="scan-interval">Scan interval (minutes)</label>
+          <input
+            id="scan-interval"
+            type="number"
+            min={5}
+            max={1440}
+            value={form.scan_interval_minutes}
+            onChange={(e) => setField('scan_interval_minutes', Number(e.target.value))}
+            className="w-24 px-2 py-1 text-xs bg-bg-secondary border border-border-default rounded text-text-primary focus:outline-none focus:border-accent"
+          />
+        </div>
+        <div className="space-y-1.5">
+          <label className="text-[10px] text-text-muted uppercase tracking-wide" htmlFor="lookback-days">Lookback (days, 0 = all time)</label>
+          <input
+            id="lookback-days"
+            type="number"
+            min={0}
+            max={3650}
+            value={form.lookback_days}
+            onChange={(e) => setField('lookback_days', Number(e.target.value))}
+            className="w-24 px-2 py-1 text-xs bg-bg-secondary border border-border-default rounded text-text-primary focus:outline-none focus:border-accent"
+          />
+        </div>
       </div>
 
       <button

@@ -9,7 +9,7 @@ import { InsightsPanel } from './InsightsPanel';
 import { ChatTerminal } from '@/components/chat/ChatTerminal';
 import { MCPServerPanel } from '@/components/settings/MCPServerPanel';
 import { ToastContainer } from '@/components/common/Toast';
-import { VscLayoutSidebarLeft, VscLayoutSidebarRight, VscArrowLeft } from 'react-icons/vsc';
+import { VscLayoutSidebarLeft, VscLayoutSidebarRight, VscArrowLeft, VscMail, VscSettingsGear } from 'react-icons/vsc';
 import { BsSun, BsMoon } from 'react-icons/bs';
 
 export function AppShell() {
@@ -133,6 +133,28 @@ export function AppShell() {
           <span className="text-sm font-bold text-accent tracking-wide">{activeClient || 'CLIENT INTELLIGENCE AGENT'}</span>
         </div>
         <div className="flex items-center gap-3">
+          {activeClient && (
+            <>
+              <button
+                type="button"
+                onClick={() => navigate(`/clients/${encodeURIComponent(activeClient)}/communications`)}
+                title="Communications"
+                aria-label="Communications"
+                className="text-text-muted hover:text-text-primary transition-colors p-1 rounded"
+              >
+                <VscMail size={15} />
+              </button>
+              <button
+                type="button"
+                onClick={() => navigate(`/clients/${encodeURIComponent(activeClient)}/settings`)}
+                title="Client settings"
+                aria-label="Client settings"
+                className="text-text-muted hover:text-text-primary transition-colors p-1 rounded"
+              >
+                <VscSettingsGear size={15} />
+              </button>
+            </>
+          )}
           <button
             type="button"
             onClick={() => navigate('/profile')}

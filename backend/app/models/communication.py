@@ -20,6 +20,7 @@ class CommunicationConfig(BaseModel):
     scan_sent: bool = True
     auto_draft: bool = True
     scan_interval_minutes: int = 15
+    lookback_days: int = 0           # 0 = all time; >0 = only that many days back
     updated_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 
 

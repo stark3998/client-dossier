@@ -55,6 +55,12 @@ export interface ActionItem {
   completed: boolean;
 }
 
+export interface EngagementDefaults {
+  default_phase?: string;
+  default_type?: string;
+  billing_code?: string;
+}
+
 export interface ClientMemory {
   id: string;
   client_name: string;
@@ -66,6 +72,7 @@ export interface ClientMemory {
   strategic_priorities: string[];
   past_deliverables: Deliverable[];
   open_action_items: ActionItem[];
+  engagement_defaults?: EngagementDefaults;
   last_updated?: string;
   sources: string[];
 }
@@ -375,6 +382,7 @@ export interface CommunicationConfig {
   scan_sent: boolean;
   auto_draft: boolean;
   scan_interval_minutes: number;
+  lookback_days: number;
   updated_at?: string;
 }
 

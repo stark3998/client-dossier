@@ -72,7 +72,15 @@ async def run_react_loop(
         # Execute each function call
         for fc in function_calls:
             tool_name = f"{fc.plugin_name}.{fc.function_name}" if fc.plugin_name else fc.function_name
-            args = fc.arguments or {}
+            # fc.arguments is a JSON string in SK 1.x — parse to dict for StreamEvent
+            raw_args = fc.arguments or "{}"
+            if isinstance(raw_args, str):
+                try:
+                    args: dict = json.loads(raw_args)
+                except (json.JSONDecodeError, TypeError):
+                    args = {}
+            else:
+                args = dict(raw_args) if raw_args else {}
             tool_source = "mcp" if (fc.plugin_name or "").startswith("MCP_") else None
 
             yield StreamEvent(
@@ -96,6 +104,9 @@ async def run_react_loop(
                 )
             except Exception as e:
                 logger.warning("Tool call failed %s: %s", tool_name, e)
+                # Add a fallback tool result so chat_history stays valid for
+                # the next API call (orphaned tool_call_ids cause a 400).
+                _add_error_tool_result(chat_history, fc, str(e))
                 yield StreamEvent(
                     type="tool_result",
                     tool_name=tool_name,
@@ -110,6 +121,23 @@ async def run_react_loop(
             )
 
     yield StreamEvent(type="done")
+
+
+def _add_error_tool_result(chat_history, fc, error_msg: str) -> None:
+    """Add an error tool result to chat_history to keep the conversation valid."""
+    try:
+        from semantic_kernel.contents.function_result_content import FunctionResultContent
+        from semantic_kernel.contents.chat_message_content import ChatMessageContent
+        from semantic_kernel.contents.utils.author_role import AuthorRole
+        error_result = FunctionResultContent(
+            id=fc.id,
+            name=fc.function_name,
+            plugin_name=fc.plugin_name,
+            result=f"Error: {error_msg}",
+        )
+        chat_history.add_message(ChatMessageContent(role=AuthorRole.TOOL, items=[error_result]))
+    except Exception as inner:
+        logger.warning("Could not add error tool result to history: %s", inner)
 
 
 def _reduce_chunks(chunks):

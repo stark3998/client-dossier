@@ -15,6 +15,9 @@ logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/communication", tags=["communication"])
 ws_router = APIRouter(tags=["communication-ws"])
 
+# In-memory scan progress store — keyed by client_id
+_scan_progress: dict[str, dict] = {}
+
 
 def _client_id(client_name: str) -> str:
     return client_name.lower().replace(" ", "-")
@@ -80,13 +83,193 @@ async def trigger_scan(client_name: str, background_tasks: BackgroundTasks):
     if scanner is None:
         raise HTTPException(status_code=503, detail="Communication scanner not initialized")
 
+    client_id = _client_id(client_name)
+
+    # Initialise progress entry
+    _scan_progress[client_id] = {
+        "running": True,
+        "client_name": client_name,
+        "started_at": datetime.now(timezone.utc).isoformat(),
+        "phase": "starting",
+        "current_account": None,
+        "current_folder": None,
+        "folder_status": None,
+        "folder_fetched": 0,
+        "folder_matched": 0,
+        "totals_fetched": 0,
+        "totals_matched": 0,
+        "totals_new": 0,
+        "message": "Starting scan…",
+        "completed_at": None,
+        "error": None,
+    }
+
+    def _progress(update: dict):
+        if client_id in _scan_progress:
+            _scan_progress[client_id].update(update)
+
     async def _run():
-        config = await scanner._get_config(client_name)
-        if config:
-            await scanner.scan_client(client_name, config)
+        try:
+            logger.info("trigger_scan: background task started for client=%r", client_name)
+            _progress({"phase": "loading_config", "message": "Loading config…"})
+            config = await scanner._get_config(client_name)
+            if config is None:
+                msg = "No config found — configure domains/accounts in the Config tab first"
+                logger.warning("trigger_scan: %s  client=%r", msg, client_name)
+                _progress({"running": False, "phase": "error", "message": msg, "error": msg,
+                           "completed_at": datetime.now(timezone.utc).isoformat()})
+                return
+            await scanner.scan_client(client_name, config, progress_cb=_progress)
+            logger.info("trigger_scan: background task completed for client=%r", client_name)
+            _progress({
+                "running": False,
+                "phase": "done",
+                "current_account": None,
+                "current_folder": None,
+                "completed_at": datetime.now(timezone.utc).isoformat(),
+            })
+        except Exception as e:
+            logger.error("trigger_scan: background task FAILED for client=%r: %s", client_name, e, exc_info=True)
+            _progress({"running": False, "phase": "error", "message": str(e), "error": str(e),
+                       "completed_at": datetime.now(timezone.utc).isoformat()})
 
     background_tasks.add_task(_run)
     return {"status": "scan_triggered", "client": client_name}
+
+
+@router.get("/{client_name}/scan/status")
+async def scan_status(client_name: str):
+    """Return the current scan progress for a client. Empty object if no scan has run."""
+    client_id = _client_id(client_name)
+    return _scan_progress.get(client_id, {"running": False})
+
+
+# -- Debug / diagnostic (synchronous, returns full trace) ---------------------
+
+@router.get("/{client_name}/debug")
+async def debug_scan(client_name: str):
+    """Synchronous diagnostic endpoint. Traces every step of the scan pipeline
+    and returns a structured report. Does NOT write to the database."""
+    from datetime import timedelta
+    from app.dependencies import get_communication_access, get_communication_scanner
+
+    report: dict = {
+        "client_name": client_name,
+        "client_id": _client_id(client_name),
+        "outlook": {},
+        "config": {},
+        "scan_preview": [],
+        "errors": [],
+    }
+
+    # 1. Outlook availability
+    try:
+        access = get_communication_access()
+        if access is None:
+            report["outlook"]["status"] = "unavailable"
+            report["errors"].append("CommunicationAccess not initialised (check dependencies)")
+        else:
+            accounts = await access.get_accounts()
+            report["outlook"]["status"] = "ok"
+            report["outlook"]["accounts"] = accounts
+            logger.info("debug_scan: Outlook accounts=%s", accounts)
+    except Exception as e:
+        report["outlook"]["status"] = "error"
+        report["errors"].append(f"Outlook: {e}")
+        logger.error("debug_scan: Outlook error: %s", e, exc_info=True)
+
+    # 2. Config
+    try:
+        scanner = get_communication_scanner()
+        if scanner is None:
+            report["config"]["status"] = "scanner_not_initialised"
+            report["errors"].append("CommunicationScanner not initialised")
+        else:
+            config = await scanner._get_config(client_name)
+            if config is None:
+                report["config"]["status"] = "not_found"
+                report["config"]["hint"] = (
+                    "Go to Communications > Config tab and save your settings. "
+                    f"The config is stored under id/partition='{_client_id(client_name)}'."
+                )
+            else:
+                report["config"]["status"] = "ok"
+                report["config"]["domains"] = config.domains
+                report["config"]["keywords"] = config.keywords
+                report["config"]["contacts"] = config.contacts
+                report["config"]["accounts"] = [
+                    {"display_name": a.display_name, "folders": a.folders}
+                    for a in config.accounts
+                ]
+                report["config"]["scan_sent"] = config.scan_sent
+                report["config"]["auto_draft"] = config.auto_draft
+
+                # 3. Scan preview (fetch up to 20 emails per folder, test attribution, no DB write)
+                if access is not None:
+                    if config.lookback_days == 0:
+                        since = datetime(2000, 1, 1, tzinfo=timezone.utc)
+                    else:
+                        since = datetime.now(timezone.utc) - timedelta(days=config.lookback_days)
+                    for account in config.accounts:
+                        folders = list(account.folders or ["Inbox"])
+                        if config.scan_sent and "Sent Items" not in folders:
+                            folders.append("Sent Items")
+
+                        # Verify folder list from Outlook
+                        real_folders = await access.get_folders(account.display_name)
+                        account_entry: dict = {
+                            "account": account.display_name,
+                            "outlook_folders_available": real_folders,
+                            "folders_scanned": [],
+                        }
+
+                        for folder in folders:
+                            folder_entry: dict = {
+                                "folder": folder,
+                                "found_in_outlook": folder in real_folders,
+                                "emails_fetched": 0,
+                                "emails_attributed": 0,
+                                "emails_rejected": 0,
+                                "sample": [],
+                                "rejection_reasons": [],
+                            }
+                            try:
+                                raw_emails = await access.get_emails(
+                                    account.display_name, folder, since
+                                )
+                                folder_entry["emails_fetched"] = len(raw_emails)
+                                for raw in raw_emails[:50]:  # preview only
+                                    cls = scanner._attribute(raw, config)
+                                    if cls:
+                                        folder_entry["emails_attributed"] += 1
+                                        if len(folder_entry["sample"]) < 5:
+                                            folder_entry["sample"].append({
+                                                "subject": raw.subject,
+                                                "sender": raw.sender,
+                                                "received_at": raw.received_at.isoformat(),
+                                                "match": f"{cls.match_type}/{cls.match_field}={cls.matched_value}",
+                                            })
+                                    else:
+                                        folder_entry["emails_rejected"] += 1
+                                        if len(folder_entry["rejection_reasons"]) < 3:
+                                            folder_entry["rejection_reasons"].append({
+                                                "subject": raw.subject[:80],
+                                                "sender": raw.sender,
+                                                "reason": "no domain/keyword/contact match",
+                                            })
+                            except Exception as e:
+                                folder_entry["error"] = str(e)
+                                report["errors"].append(f"{account.display_name}/{folder}: {e}")
+                                logger.error("debug_scan: error on %s/%s: %s", account.display_name, folder, e, exc_info=True)
+
+                            account_entry["folders_scanned"].append(folder_entry)
+                        report["scan_preview"].append(account_entry)
+    except Exception as e:
+        report["config"]["status"] = "error"
+        report["errors"].append(f"Config/scan error: {e}")
+        logger.error("debug_scan: unexpected error: %s", e, exc_info=True)
+
+    return report
 
 
 # -- Emails -------------------------------------------------------------------

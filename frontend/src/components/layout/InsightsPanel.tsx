@@ -30,18 +30,7 @@ export function InsightsPanel() {
 
   const clientPath = activeClient ? `/clients/${encodeURIComponent(activeClient)}` : '';
 
-  if (isLoading) {
-    return (
-      <div className="flex flex-col h-full bg-bg-panel">
-        <div className="flex items-center px-3 h-10 border-b border-border-default shrink-0">
-          <span className="text-xs font-semibold text-text-secondary uppercase tracking-wider">Key Insights</span>
-        </div>
-        <div className="p-3 text-text-muted text-sm">Loading...</div>
-      </div>
-    );
-  }
-
-  if (!memory) {
+  if (!activeClient) {
     return (
       <div className="flex flex-col h-full bg-bg-panel">
         <div className="flex items-center px-3 h-10 border-b border-border-default shrink-0">
@@ -58,19 +47,24 @@ export function InsightsPanel() {
         <span className="text-xs font-semibold text-text-secondary uppercase tracking-wider">Key Insights</span>
       </div>
       <div className="flex-1 overflow-y-auto p-3 space-y-3">
-        <InsightsSummary memory={memory} />
-        <StakeholderList stakeholders={memory.key_stakeholders} />
-        <ActionItems items={memory.open_action_items} clientName={memory.client_name} />
+        {/* Memory-dependent insight content */}
+        {memory ? (
+          <>
+            <InsightsSummary memory={memory} />
+            <StakeholderList stakeholders={memory.key_stakeholders} />
+            <ActionItems items={memory.open_action_items} clientName={memory.client_name} />
+          </>
+        ) : isLoading ? (
+          <div className="text-text-muted text-xs py-2">Loading insights...</div>
+        ) : null}
 
-        {/* Engagements summary card */}
+        {/* Nav cards — always visible once a client is selected */}
         <NavCard
           title="Engagements"
           count={engagements.length}
           subtitle={engagements.filter((e) => e.status === 'active').length + ' active'}
           onClick={() => navigate(`${clientPath}/engagements`)}
         />
-
-        {/* Risks summary card */}
         <NavCard
           title="Risk Register"
           count={risks.length}
@@ -78,24 +72,18 @@ export function InsightsPanel() {
           onClick={() => navigate(`${clientPath}/risks`)}
           color={risks.some((r) => r.probability * r.impact >= 15) ? 'red' : undefined}
         />
-
-        {/* Timeline summary card */}
         <NavCard
           title="Timeline"
           count={events.length}
           subtitle={events.length > 0 ? `Latest: ${events[0]?.date?.split('T')[0] || ''}` : 'No events'}
           onClick={() => navigate(`${clientPath}/timeline`)}
         />
-
-        {/* Analysis summary card */}
         <NavCard
           title="Document Analysis"
           count={analyses.length}
           subtitle={analyses.length > 0 ? `Last: ${analyses[0]?.doc_type || 'unknown'}` : 'No analyses'}
           onClick={() => navigate(`${clientPath}/analysis`)}
         />
-
-        {/* Communications summary card */}
         <NavCard
           title="Communications"
           count={commSummary?.emails_last_7d ?? 0}
@@ -106,6 +94,12 @@ export function InsightsPanel() {
           }
           onClick={() => navigate(`${clientPath}/communications`)}
           color={commSummary && commSummary.pending_drafts > 0 ? 'yellow' : undefined}
+        />
+        <NavCard
+          title="Settings"
+          count={0}
+          subtitle="Profile · Comms · Engagements"
+          onClick={() => navigate(`${clientPath}/settings`)}
         />
       </div>
     </div>

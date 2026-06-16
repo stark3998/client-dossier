@@ -33,7 +33,6 @@ def get_execution_settings(auto_invoke: bool = True):
 
     return AzureChatPromptExecutionSettings(
         service_id="chat",
-        max_tokens=4096,
-        temperature=0.3,
+        max_completion_tokens=4096,
         function_choice_behavior=FunctionChoiceBehavior.Auto(auto_invoke=auto_invoke),
     )

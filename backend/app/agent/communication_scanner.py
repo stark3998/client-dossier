@@ -9,7 +9,7 @@ import asyncio
 import hashlib
 import logging
 from datetime import datetime, timedelta, timezone
-from typing import Optional
+from typing import Callable, Optional
 
 from app.models.communication import (
     CommunicationConfig,
@@ -67,22 +67,65 @@ class CommunicationScanner:
 
     async def _get_config(self, client_name: str) -> Optional[CommunicationConfig]:
         client_id = client_name.lower().replace(" ", "-")
+        logger.info("_get_config: looking up config for client=%r  client_id=%r", client_name, client_id)
         try:
             repo = await self._manager.get_client_repo(client_id, "communication_config")
             raw = await repo.get(client_id, client_id)
             if raw:
-                return CommunicationConfig(**raw)
-        except Exception:
-            pass
+                cfg = CommunicationConfig(**raw)
+                logger.info(
+                    "_get_config: loaded config for %r  domains=%s  keywords=%s  "
+                    "contacts=%s  accounts=%s  scan_sent=%s",
+                    client_name, cfg.domains, cfg.keywords,
+                    cfg.contacts,
+                    [a.display_name for a in cfg.accounts],
+                    cfg.scan_sent,
+                )
+                return cfg
+            else:
+                logger.warning(
+                    "_get_config: no config document found for client_id=%r  "
+                    "(checked partition+id = %r). "
+                    "Go to Communications > Config tab and save settings first.",
+                    client_id, client_id,
+                )
+        except Exception as e:
+            logger.error("_get_config: exception loading config for %r: %s", client_name, e, exc_info=True)
         return None
 
-    async def scan_client(self, client_name: str, config: CommunicationConfig):
+    async def scan_client(
+        self,
+        client_name: str,
+        config: CommunicationConfig,
+        progress_cb: Optional[Callable[[dict], None]] = None,
+    ):
         """Full scan cycle for one client — emails, calendar, transcripts, memory."""
         client_id = client_name.lower().replace(" ", "-")
-        since = datetime.now(timezone.utc) - timedelta(days=config.scan_interval_minutes * 2 / 1440 + 7)
+        if config.lookback_days == 0:
+            since = datetime(2000, 1, 1, tzinfo=timezone.utc)  # all time
+        else:
+            since = datetime.now(timezone.utc) - timedelta(days=config.lookback_days)
+        logger.info(
+            "scan_client START  client=%r  since=%s  accounts=%s  "
+            "domains=%s  keywords=%s  contacts=%s",
+            client_name, since.isoformat(),
+            [a.display_name for a in config.accounts],
+            config.domains, config.keywords, config.contacts,
+        )
 
-        await self._scan_emails(client_name, client_id, config, since)
+        if progress_cb:
+            progress_cb({"phase": "emails", "message": f"Scanning emails since {since.strftime('%Y-%m-%d')}"})
+
+        await self._scan_emails(client_name, client_id, config, since, progress_cb=progress_cb)
+
+        if progress_cb:
+            progress_cb({"phase": "calendar", "message": "Scanning calendar events"})
+
         await self._scan_calendar(client_name, client_id, config, since)
+        logger.info("scan_client DONE  client=%r", client_name)
+
+        if progress_cb:
+            progress_cb({"phase": "done", "message": "Scan complete"})
 
     async def _scan_emails(
         self,
@@ -90,31 +133,89 @@ class CommunicationScanner:
         client_id: str,
         config: CommunicationConfig,
         since: datetime,
+        progress_cb: Optional[Callable[[dict], None]] = None,
     ):
         email_repo = await self._manager.get_client_repo(client_id, "emails")
         draft_repo = await self._manager.get_client_repo(client_id, "draft_replies")
+
+        total_fetched = 0
+        total_attributed = 0
+        total_new = 0
 
         for account in config.accounts:
             folders = account.folders or ["Inbox"]
             if config.scan_sent and "Sent Items" not in folders:
                 folders = list(folders) + ["Sent Items"]
 
+            logger.info(
+                "_scan_emails: account=%r  scanning folders=%s",
+                account.display_name, folders,
+            )
+
+            if progress_cb:
+                progress_cb({
+                    "current_account": account.display_name,
+                    "current_folder": None,
+                    "message": f"Account: {account.display_name}",
+                })
+
             for folder in folders:
+                if progress_cb:
+                    progress_cb({
+                        "current_account": account.display_name,
+                        "current_folder": folder,
+                        "folder_status": "fetching",
+                        "message": f"Fetching {account.display_name} / {folder}…",
+                    })
                 try:
                     raw_emails = await self._access.get_emails(
                         account.display_name, folder, since
                     )
+                    total_fetched += len(raw_emails)
+                    logger.info(
+                        "_scan_emails: fetched %d emails from %r/%r",
+                        len(raw_emails), account.display_name, folder,
+                    )
+
+                    if progress_cb:
+                        progress_cb({
+                            "current_account": account.display_name,
+                            "current_folder": folder,
+                            "folder_status": "attributing",
+                            "folder_fetched": len(raw_emails),
+                            "message": f"Attributing {len(raw_emails)} emails in {folder}…",
+                            "totals_fetched": total_fetched,
+                        })
+
+                    attributed_in_folder = 0
+                    skipped_attribution = 0
                     for raw in raw_emails:
                         cls = self._attribute(raw, config)
                         if cls is None:
+                            skipped_attribution += 1
+                            logger.debug(
+                                "_scan_emails: SKIP (no attribution)  subject=%r  sender=%r",
+                                raw.subject, raw.sender,
+                            )
                             continue
+
+                        attributed_in_folder += 1
+                        total_attributed += 1
+                        logger.debug(
+                            "_scan_emails: ATTRIBUTED  subject=%r  sender=%r  "
+                            "match=%s/%s=%r",
+                            raw.subject, raw.sender,
+                            cls.match_type, cls.match_field, cls.matched_value,
+                        )
 
                         email_id = hashlib.sha256(raw.message_id.encode()).hexdigest()[:36] if raw.message_id else None
                         if not email_id:
+                            logger.debug("_scan_emails: skipped — empty message_id on %r", raw.subject)
                             continue
 
                         existing = await email_repo.get(email_id, client_name)
                         if existing:
+                            logger.debug("_scan_emails: already stored  id=%s  subject=%r", email_id, raw.subject)
                             continue
 
                         scanned = ScannedEmail(
@@ -136,17 +237,69 @@ class CommunicationScanner:
                             classification=cls,
                         )
                         await email_repo.upsert(scanned.model_dump(mode="json"))
+                        total_new += 1
+                        logger.info(
+                            "_scan_emails: SAVED new email  id=%s  subject=%r  sender=%r  match=%s",
+                            email_id, raw.subject, raw.sender, cls.match_type,
+                        )
+
+                        if progress_cb:
+                            progress_cb({
+                                "current_account": account.display_name,
+                                "current_folder": folder,
+                                "folder_status": "saving",
+                                "totals_fetched": total_fetched,
+                                "totals_matched": total_attributed,
+                                "totals_new": total_new,
+                                "message": f"Saved: {raw.subject[:60]}",
+                            })
+
                         await self._update_memory_from_email(client_name, client_id, scanned)
 
-                        # Auto-draft: create a reply for inbound emails from client contacts if enabled
-                        if config.auto_draft and folder.lower() in ("inbox", "inbox"):
+                        if config.auto_draft and folder.lower() == "inbox":
                             await self._maybe_create_draft(
                                 client_name, client_id, scanned, draft_repo, config
                             )
 
                         await self._publish_event(client_name, "new_email", email_id, f"New email: {raw.subject[:60]}")
+
+                    logger.info(
+                        "_scan_emails: folder %r/%r  fetched=%d attributed=%d skipped=%d",
+                        account.display_name, folder,
+                        len(raw_emails), attributed_in_folder, skipped_attribution,
+                    )
+
+                    if progress_cb:
+                        progress_cb({
+                            "current_account": account.display_name,
+                            "current_folder": folder,
+                            "folder_status": "done",
+                            "folder_fetched": len(raw_emails),
+                            "folder_matched": attributed_in_folder,
+                            "totals_fetched": total_fetched,
+                            "totals_matched": total_attributed,
+                            "totals_new": total_new,
+                            "message": f"{folder}: {len(raw_emails)} fetched, {attributed_in_folder} matched",
+                        })
+
                 except Exception as e:
-                    logger.warning("Email scan error for %s/%s/%s: %s", client_name, account.display_name, folder, e)
+                    logger.warning(
+                        "_scan_emails: ERROR for %s/%s/%s: %s",
+                        client_name, account.display_name, folder, e,
+                        exc_info=True,
+                    )
+                    if progress_cb:
+                        progress_cb({
+                            "current_account": account.display_name,
+                            "current_folder": folder,
+                            "folder_status": "error",
+                            "message": f"Error in {folder}: {e}",
+                        })
+
+        logger.info(
+            "_scan_emails SUMMARY  client=%r  total_fetched=%d  attributed=%d  new_saved=%d",
+            client_name, total_fetched, total_attributed, total_new,
+        )
 
     async def _scan_calendar(
         self,

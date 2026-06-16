@@ -59,8 +59,7 @@ class AnalysisService:
                     {"role": "system", "content": ANALYSIS_PROMPT},
                     {"role": "user", "content": text},
                 ],
-                temperature=0.1,
-                max_tokens=4096,
+                max_completion_tokens=4096,
                 response_format={"type": "json_object"},
             )
 
