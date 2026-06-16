@@ -22,6 +22,7 @@ async def run_ingestion(
     embedding_service,
     job_repo=None,
     analysis_service=None,
+    analysis_repo=None,
     force: bool = False,
 ):
     settings = get_settings()
@@ -58,6 +59,7 @@ async def run_ingestion(
                     search_service=search_service,
                     embedding_service=embedding_service,
                     analysis_service=analysis_service,
+                    analysis_repo=analysis_repo,
                     force=force,
                 )
             except Exception as e:
@@ -113,6 +115,7 @@ async def _ingest_file(
     search_service,
     embedding_service,
     analysis_service=None,
+    analysis_repo=None,
     force: bool = False,
 ) -> dict:
     import time
@@ -152,6 +155,8 @@ async def _ingest_file(
             deliverable_related = doc_type in {
                 "proposal", "contract", "report", "status_report"
             }
+            if analysis_repo:
+                await analysis_repo.upsert(analysis.model_dump(mode="json"))
         except Exception as e:
             logger.warning("Analysis skipped for %s: %s", file_path, e)
 

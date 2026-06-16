@@ -1,3 +1,5 @@
+import { useState } from 'react';
+import { VscChevronDown } from 'react-icons/vsc';
 import type { ClientMemory } from '@/types';
 
 interface Props {
@@ -5,10 +7,23 @@ interface Props {
 }
 
 export function InsightsSummary({ memory }: Props) {
+  const [collapsed, setCollapsed] = useState(false);
+
   return (
     <div className="bg-bg-secondary rounded-md p-3 border border-border-default">
-      <h3 className="text-xs font-semibold text-text-secondary uppercase tracking-wider mb-2">Client Overview</h3>
-      <div className="space-y-1.5">
+      <button
+        type="button"
+        onClick={() => setCollapsed((c) => !c)}
+        className="flex items-center justify-between w-full group"
+      >
+        <h3 className="text-xs font-semibold text-text-secondary uppercase tracking-wider">Client Overview</h3>
+        <VscChevronDown
+          size={12}
+          className={`text-text-muted transition-transform duration-150 ${collapsed ? '-rotate-90' : ''}`}
+          aria-hidden="true"
+        />
+      </button>
+      {!collapsed && <div className="mt-2 space-y-1.5">
         <div className="text-sm font-medium text-text-primary">{memory.client_name}</div>
         {memory.industry && (
           <span className="inline-block px-2 py-0.5 text-[10px] rounded bg-accent/10 text-accent">{memory.industry}</span>
@@ -36,7 +51,7 @@ export function InsightsSummary({ memory }: Props) {
             </div>
           </div>
         )}
-      </div>
+      </div>}
     </div>
   );
 }

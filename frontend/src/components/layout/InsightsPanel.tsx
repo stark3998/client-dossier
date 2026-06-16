@@ -9,9 +9,10 @@ import { useClientStore } from '@/stores/clientStore';
 import { InsightsSummary } from '@/components/insights/InsightsSummary';
 import { StakeholderList } from '@/components/insights/StakeholderList';
 import { ActionItems } from '@/components/insights/ActionItems';
+import { StakeholderDrawer } from '@/components/insights/StakeholderDrawer';
 import { VscArrowRight } from 'react-icons/vsc';
 import { useCommSummary } from '@/hooks/useCommunication';
-import type { CommSummary } from '@/types';
+import type { CommSummary, Stakeholder } from '@/types';
 
 export function InsightsPanel() {
   const navigate = useNavigate();
@@ -22,11 +23,17 @@ export function InsightsPanel() {
   const { events } = useTimeline();
   const [commSummary, setCommSummary] = useState<CommSummary | null>(null);
   const fetchCommSummary = useCommSummary();
+  const [selectedStakeholder, setSelectedStakeholder] = useState<Stakeholder | null>(null);
 
   useEffect(() => {
     if (!activeClient) return;
     fetchCommSummary(activeClient).then(setCommSummary).catch(() => {});
   }, [activeClient, fetchCommSummary]);
+
+  // Clear drawer when client changes
+  useEffect(() => {
+    setSelectedStakeholder(null);
+  }, [activeClient]);
 
   const clientPath = activeClient ? `/clients/${encodeURIComponent(activeClient)}` : '';
 
@@ -42,65 +49,88 @@ export function InsightsPanel() {
   }
 
   return (
-    <div className="flex flex-col h-full bg-bg-panel">
-      <div className="flex items-center px-3 h-10 border-b border-border-default shrink-0">
-        <span className="text-xs font-semibold text-text-secondary uppercase tracking-wider">Key Insights</span>
-      </div>
-      <div className="flex-1 overflow-y-auto p-3 space-y-3">
-        {/* Memory-dependent insight content */}
-        {memory ? (
-          <>
-            <InsightsSummary memory={memory} />
-            <StakeholderList stakeholders={memory.key_stakeholders} />
-            <ActionItems items={memory.open_action_items} clientName={memory.client_name} />
-          </>
-        ) : isLoading ? (
-          <div className="text-text-muted text-xs py-2">Loading insights...</div>
-        ) : null}
+    <div className="relative flex flex-col h-full bg-bg-panel overflow-hidden">
+      {/* ── Main insights panel ── */}
+      <div
+        className={`flex flex-col h-full transition-transform duration-200 ${
+          selectedStakeholder ? '-translate-x-full' : 'translate-x-0'
+        }`}
+      >
+        <div className="flex items-center px-3 h-10 border-b border-border-default shrink-0">
+          <span className="text-xs font-semibold text-text-secondary uppercase tracking-wider">Key Insights</span>
+        </div>
+        <div className="flex-1 overflow-y-auto p-3 space-y-3">
+          {memory ? (
+            <>
+              <InsightsSummary memory={memory} />
+              <StakeholderList
+                stakeholders={memory.key_stakeholders}
+                onSelect={setSelectedStakeholder}
+              />
+              <ActionItems items={memory.open_action_items} clientName={memory.client_name} />
+            </>
+          ) : isLoading ? (
+            <div className="text-text-muted text-xs py-2">Loading insights...</div>
+          ) : null}
 
-        {/* Nav cards — always visible once a client is selected */}
-        <NavCard
-          title="Engagements"
-          count={engagements.length}
-          subtitle={engagements.filter((e) => e.status === 'active').length + ' active'}
-          onClick={() => navigate(`${clientPath}/engagements`)}
-        />
-        <NavCard
-          title="Risk Register"
-          count={risks.length}
-          subtitle={risks.filter((r) => r.status === 'open').length + ' open'}
-          onClick={() => navigate(`${clientPath}/risks`)}
-          color={risks.some((r) => r.probability * r.impact >= 15) ? 'red' : undefined}
-        />
-        <NavCard
-          title="Timeline"
-          count={events.length}
-          subtitle={events.length > 0 ? `Latest: ${events[0]?.date?.split('T')[0] || ''}` : 'No events'}
-          onClick={() => navigate(`${clientPath}/timeline`)}
-        />
-        <NavCard
-          title="Document Analysis"
-          count={analyses.length}
-          subtitle={analyses.length > 0 ? `Last: ${analyses[0]?.doc_type || 'unknown'}` : 'No analyses'}
-          onClick={() => navigate(`${clientPath}/analysis`)}
-        />
-        <NavCard
-          title="Communications"
-          count={commSummary?.emails_last_7d ?? 0}
-          subtitle={
-            commSummary
-              ? `${commSummary.pending_drafts} draft${commSummary.pending_drafts !== 1 ? 's' : ''} · ${commSummary.upcoming_meetings} upcoming`
-              : 'Emails (7d)'
-          }
-          onClick={() => navigate(`${clientPath}/communications`)}
-          color={commSummary && commSummary.pending_drafts > 0 ? 'yellow' : undefined}
-        />
-        <NavCard
-          title="Settings"
-          count={0}
-          subtitle="Profile · Comms · Engagements"
-          onClick={() => navigate(`${clientPath}/settings`)}
-        />
+          <NavCard
+            title="Engagements"
+            count={engagements.length}
+            subtitle={engagements.filter((e) => e.status === 'active').length + ' active'}
+            onClick={() => navigate(`${clientPath}/engagements`)}
+          />
+          <NavCard
+            title="Risk Register"
+            count={risks.length}
+            subtitle={risks.filter((r) => r.status === 'open').length + ' open'}
+            onClick={() => navigate(`${clientPath}/risks`)}
+            color={risks.some((r) => r.probability * r.impact >= 15) ? 'red' : undefined}
+          />
+          <NavCard
+            title="Timeline"
+            count={events.length}
+            subtitle={events.length > 0 ? `Latest: ${events[0]?.date?.split('T')[0] || ''}` : 'No events'}
+            onClick={() => navigate(`${clientPath}/timeline`)}
+          />
+          <NavCard
+            title="Document Analysis"
+            count={analyses.length}
+            subtitle={analyses.length > 0 ? `Last: ${analyses[0]?.doc_type || 'unknown'}` : 'No analyses'}
+            onClick={() => navigate(`${clientPath}/analysis`)}
+          />
+          <NavCard
+            title="Communications"
+            count={commSummary?.emails_last_7d ?? 0}
+            subtitle={
+              commSummary
+                ? `${commSummary.pending_drafts} draft${commSummary.pending_drafts !== 1 ? 's' : ''} · ${commSummary.upcoming_meetings} upcoming`
+                : 'Emails (7d)'
+            }
+            onClick={() => navigate(`${clientPath}/communications`)}
+            color={commSummary && commSummary.pending_drafts > 0 ? 'yellow' : undefined}
+          />
+          <NavCard
+            title="Settings"
+            count={0}
+            subtitle="Profile · Comms · Engagements"
+            onClick={() => navigate(`${clientPath}/settings`)}
+          />
+        </div>
+      </div>
+
+      {/* ── Stakeholder drawer — slides in from the right over the panel ── */}
+      <div
+        className={`absolute inset-0 transition-transform duration-200 ${
+          selectedStakeholder ? 'translate-x-0' : 'translate-x-full'
+        }`}
+      >
+        {selectedStakeholder && (
+          <StakeholderDrawer
+            stakeholder={selectedStakeholder}
+            clientName={activeClient}
+            onClose={() => setSelectedStakeholder(null)}
+          />
+        )}
       </div>
     </div>
   );

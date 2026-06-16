@@ -43,12 +43,14 @@ async def trigger_ingestion(request: IngestRequest, background_tasks: Background
     try:
         from app.dependencies import (
             get_client_doc_index_repo,
+            get_client_analysis_repo,
             get_search_service,
             get_embedding_service,
             get_analysis_service,
             get_job_repo,
         )
         doc_index_repo = await get_client_doc_index_repo(request.client_name)
+        analysis_repo = await get_client_analysis_repo(request.client_name)
         search_service = get_search_service()
         embedding_service = get_embedding_service()
         analysis_service = get_analysis_service()
@@ -62,6 +64,7 @@ async def trigger_ingestion(request: IngestRequest, background_tasks: Background
             search_service=search_service,
             embedding_service=embedding_service,
             analysis_service=analysis_service,
+            analysis_repo=analysis_repo,
             job_repo=job_repo,
             force=(request.mode == "complete"),
         )
